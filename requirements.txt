@@ -9,7 +9,7 @@ gunicorn==23.0.0
 eventlet==0.39.1
 
 # Computer vision + pose estimation
-mediapipe==0.10.14
+mediapipe==0.10.32
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 
