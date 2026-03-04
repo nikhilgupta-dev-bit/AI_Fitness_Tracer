@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RepTrack — AI Workout Counter</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+<style>
+  :root {
+    --bg:       #0a0a0f;
+    --surface:  #13131a;
+    --border:   #1e1e2e;
+    --accent:   #00ff88;
+    --accent2:  #ff3c6e;
+    --text:     #e8e8f0;
+    --muted:    #55556a;
+    --panel:    rgba(19,19,26,0.92);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── grid noise background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── header ── */
+  header {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+  }
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,255,136,.4);
+  }
+  .logo span { color: var(--text); }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    display: inline-block; margin-right: 8px;
+    transition: background .3s;
+  }
+  .status-dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── layout ── */
+  .app {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 0;
+    height: calc(100vh - 65px);
+  }
+
+  /* ── camera panel ── */
+  .camera-wrap {
+    position: relative;
+    background: #000;
+    overflow: hidden;
+  }
+  video, canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  canvas { z-index: 2; }
+
+  /* Angle arc overlay */
+  #arcCanvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    z-index: 3; pointer-events: none;
+  }
+
+  .cam-overlay {
+    position: absolute; inset: 0; z-index: 4;
+    pointer-events: none;
+  }
+
+  /* top-left angle badge */
+  .angle-badge {
+    position: absolute; top: 16px; left: 16px;
+    background: rgba(0,0,0,.7);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: .85rem;
+  }
+  .angle-badge span { color: var(--accent); font-size: 1.4rem; font-weight: 500; }
+
+  /* feedback pill */
+  .feedback-pill {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.8);
+    border: 1px solid var(--accent);
+    border-radius: 40px;
+    padding: 10px 28px;
+    font-size: 1rem; font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-align: center;
+    white-space: nowrap;
+    transition: border-color .3s, color .3s;
+    min-width: 220px;
+  }
+  .feedback-pill.warn { border-color: var(--accent2); color: var(--accent2); }
+
+  /* start overlay */
+  .start-overlay {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(10,10,15,.85);
+    backdrop-filter: blur(6px);
+    gap: 20px;
+    transition: opacity .4s;
+  }
+  .start-overlay.hidden { opacity: 0; pointer-events: none; }
+  .start-overlay h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.5rem; letter-spacing: 4px;
+    color: var(--accent);
+  }
+  .start-overlay p { color: var(--muted); font-size: .95rem; text-align: center; max-width: 320px; line-height: 1.6; }
+  .btn-start {
+    background: var(--accent); color: #000;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700; font-size: 1rem;
+    border: none; border-radius: 8px;
+    padding: 14px 40px; cursor: pointer;
+    letter-spacing: 1px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-start:hover { transform: scale(1.04); box-shadow: 0 0 24px rgba(0,255,136,.4); }
+
+  /* ── side panel ── */
+  .side {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .side-section {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .side-label {
+    font-family: 'DM Mono', monospace;
+    font-size: .65rem; letter-spacing: 3px;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* rep display */
+  .rep-display {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 7rem; line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,255,136,.3);
+    text-align: center;
+    transition: transform .1s;
+  }
+  .rep-display.bump { transform: scale(1.12); }
+
+  /* stage indicator */
+  .stage-bar {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .stage-pill {
+    flex: 1; padding: 6px;
+    border-radius: 6px; text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: .7rem; letter-spacing: 2px;
+    background: var(--border); color: var(--muted);
+    transition: background .3s, color .3s;
+  }
+  .stage-pill.active { background: var(--accent); color: #000; }
+
+  /* exercise select */
+  select {
+    width: 100%;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif; font-size: .9rem;
+    cursor: pointer; outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2355556a' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* stats grid */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+  }
+  .stat-card .val {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.3rem; color: var(--text);
+    margin-bottom: 2px;
+  }
+  .stat-card .lbl {
+    font-size: .68rem; color: var(--muted); letter-spacing: 1px;
+  }
+
+  /* ROM bar */
+  .rom-track {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px; height: 10px;
+    overflow: hidden; margin-top: 8px;
+  }
+  .rom-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), #00ccff);
+    border-radius: 20px;
+    transition: width .2s;
+  }
+
+  /* rep history */
+  .rep-history {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    max-height: 80px; overflow: hidden;
+  }
+  .rep-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    opacity: 0; transform: scale(0);
+    animation: popIn .3s forwards;
+  }
+  @keyframes popIn { to { opacity:1; transform:scale(1); } }
+
+  /* buttons */
+  .btn-row { display: flex; gap: 10px; }
+  .btn {
+    flex: 1; padding: 11px;
+    border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: .85rem;
+    cursor: pointer; transition: all .2s;
+    letter-spacing: .5px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* summary modal */
+  .modal-bg {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,.85); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s;
+  }
+  .modal-bg.show { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 36px;
+    width: 480px; max-width: 95vw;
+    transform: translateY(20px);
+    transition: transform .3s;
+  }
+  .modal-bg.show .modal { transform: translateY(0); }
+  .modal h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem; letter-spacing: 3px;
+    color: var(--accent); margin-bottom: 24px;
+  }
+  .modal-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .modal-stat { background: var(--bg); border-radius: 10px; padding: 14px; }
+  .modal-stat .v { font-family: 'DM Mono', monospace; font-size: 1.5rem; color: var(--text); }
+  .modal-stat .l { font-size: .7rem; color: var(--muted); margin-top: 2px; letter-spacing: 1px; }
+
+  /* cadence chart */
+  #cadenceChart { width:100%; height:60px; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Rep<span>Track</span></div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Camera off</span>
+  </div>
+  <div style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--muted)" id="fpsDisplay">-- FPS</div>
+</header>
+
+<div class="app">
+
+  <!-- Camera -->
+  <div class="camera-wrap">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="poseCanvas"></canvas>
+    <canvas id="arcCanvas"></canvas>
+
+    <div class="cam-overlay">
+      <div class="angle-badge">
+        ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
+      </div>
+      <div class="feedback-pill" id="feedbackPill">Get into position…</div>
+    </div>
+
+    <div class="start-overlay" id="startOverlay">
+      <h2>AI Rep Counter</h2>
+      <p>Uses your webcam and MediaPipe AI to count reps in real time — no data leaves your device.</p>
+      <button class="btn-start" id="startBtn">Start Camera</button>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side">
+
+    <div class="side-section">
+      <div class="side-label">Reps</div>
+      <div class="rep-display" id="repDisplay">0</div>
+      <div class="stage-bar">
+        <div class="stage-pill" id="stageStart">START</div>
+        <div class="stage-pill" id="stageEnd">END</div>
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Exercise</div>
+      <select id="exerciseSelect">
+        <option value="bicep_left">Bicep Curl (Left)</option>
+        <option value="bicep_right">Bicep Curl (Right)</option>
+        <option value="pushup">Push-Up</option>
+        <option value="squat">Squat</option>
+        <option value="shoulder_press">Shoulder Press (Left)</option>
+        <option value="lateral_raise">Lateral Raise (Left)</option>
+      </select>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Live Stats</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="val" id="statRPM">--</div><div class="lbl">REPS/MIN</div></div>
+        <div class="stat-card"><div class="val" id="statCadence">--</div><div class="lbl">SEC/REP</div></div>
+        <div class="stat-card"><div class="val" id="statROM">--°</div><div class="lbl">AVG ROM</div></div>
+        <div class="stat-card"><div class="val" id="statTime">0:00</div><div class="lbl">DURATION</div></div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-bottom:4px">
+          <span>Range of Motion</span><span id="romPct">0%</span>
+        </div>
+        <div class="rom-track"><div class="rom-fill" id="romFill"></div></div>
+      </div>
+    </div>
+
+    <div class="side-section" style="flex:1">
+      <div class="side-label">Rep History</div>
+      <div class="rep-history" id="repHistory"></div>
+    </div>
+
+    <div class="side-section">
+      <div class="btn-row">
+        <button class="btn" id="summaryBtn">Summary</button>
+        <button class="btn danger" id="resetBtn">Reset</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Summary Modal -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2>Workout Summary</h2>
+    <div class="modal-stats">
+      <div class="modal-stat"><div class="v" id="mReps">0</div><div class="l">TOTAL REPS</div></div>
+      <div class="modal-stat"><div class="v" id="mRPM">--</div><div class="l">REPS / MIN</div></div>
+      <div class="modal-stat"><div class="v" id="mCadence">--</div><div class="l">AVG CADENCE</div></div>
+      <div class="modal-stat"><div class="v" id="mROM">--</div><div class="l">AVG ROM</div></div>
+      <div class="modal-stat"><div class="v" id="mDuration">0:00</div><div class="l">DURATION</div></div>
+      <div class="modal-stat"><div class="v" id="mExercise">--</div><div class="l">EXERCISE</div></div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:.7rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
+      <canvas id="cadenceChart"></canvas>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="closeModal">Close</button>
+      <button class="btn danger" id="newSession">New Session</button>
+    </div>
+  </div>
+</div>
+
+<!-- MediaPipe via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+<script>
+// ── EXERCISE CONFIG ────────────────────────────────────────────
+const EXERCISES = {
+  bicep_left:     { joints:[11,13,15], downAngle:155, upAngle:45,  dir:'down_then_up' },
+  bicep_right:    { joints:[12,14,16], downAngle:155, upAngle:45,  dir:'down_then_up' },
+  pushup:         { joints:[11,13,15], downAngle:75,  upAngle:155, dir:'up_then_down' },
+  squat:          { joints:[23,25,27], downAngle:95,  upAngle:160, dir:'up_then_down' },
+  shoulder_press: { joints:[13,11,23], downAngle:70,  upAngle:155, dir:'down_then_up' },
+  lateral_raise:  { joints:[23,11,13], downAngle:30,  upAngle:80,  dir:'down_then_up' },
+};
+
+// ── STATE ──────────────────────────────────────────────────────
+let state = {
+  count: 0,
+  stage: null,
+  angle: 0,
+  smoothAngle: 0,
+  angleBuffer: [],
+  holdCounter: 0,
+  candidate: null,
+  lastRepTime: 0,
+  repTimes: [],
+  repDurations: [],
+  angleMins: [],
+  angleMaxs: [],
+  repAngleMin: 999,
+  repAngleMax: 0,
+  startTime: null,
+  exercise: 'bicep_left',
+  feedback: 'Get into position…',
+  feedbackWarn: false,
+};
+
+const HYSTERESIS   = 10;
+const HOLD_FRAMES  = 3;
+const COOLDOWN_SEC = 0.4;
+const SMOOTH_WIN   = 6;
+
+function resetState(keepExercise = true) {
+  const ex = state.exercise;
+  state = {
+    count: 0, stage: null, angle: 0, smoothAngle: 0,
+    angleBuffer: [], holdCounter: 0, candidate: null,
+    lastRepTime: 0, repTimes: [], repDurations: [],
+    angleMins: [], angleMaxs: [], repAngleMin: 999, repAngleMax: 0,
+    startTime: Date.now(), exercise: keepExercise ? ex : 'bicep_left',
+    feedback: 'Get into position…', feedbackWarn: false,
+  };
+  document.getElementById('repHistory').innerHTML = '';
+}
+
+// ── MATH ──────────────────────────────────────────────────────
+function calcAngle(lms, a, b, c) {
+  const pa = [lms[a].x, lms[a].y];
+  const pb = [lms[b].x, lms[b].y];
+  const pc = [lms[c].x, lms[c].y];
+  const r = Math.atan2(pc[1]-pb[1], pc[0]-pb[0]) - Math.atan2(pa[1]-pb[1], pa[0]-pb[0]);
+  let angle = Math.abs(r * 180 / Math.PI);
+  return angle > 180 ? 360 - angle : angle;
+}
+
+function smooth(buf, val) {
+  buf.push(val);
+  if (buf.length > SMOOTH_WIN) buf.shift();
+  return buf.reduce((a,b)=>a+b,0) / buf.length;
+}
+
+// ── REP DETECTION ─────────────────────────────────────────────
+function detectRep(angle) {
+  const cfg = EXERCISES[state.exercise];
+  const H = HYSTERESIS;
+  let newCandidate = null;
+
+  if (cfg.dir === 'down_then_up') {
+    if (angle > cfg.downAngle + H) { newCandidate = 'start'; state.feedback = 'Lower ↓'; state.feedbackWarn = false; }
+    else if (angle < cfg.upAngle - H) { newCandidate = 'end'; state.feedback = 'Hold… ✓'; state.feedbackWarn = false; }
+  } else {
+    if (angle > cfg.upAngle + H) { newCandidate = 'start'; state.feedback = 'Go down ↓'; state.feedbackWarn = false; }
+    else if (angle < cfg.downAngle - H) { newCandidate = 'end'; state.feedback = 'Hold… ✓'; state.feedbackWarn = false; }
+  }
+
+  if (!newCandidate) { state.holdCounter = 0; return; }
+
+  if (newCandidate === state.candidate) state.holdCounter++;
+  else { state.candidate = newCandidate; state.holdCounter = 1; }
+
+  if (state.holdCounter >= HOLD_FRAMES) commitStage(newCandidate);
+}
+
+function commitStage(newStage) {
+  if (newStage === state.stage) return;
+  const prev = state.stage;
+  state.stage = newStage;
+
+  if (newStage === 'end' && prev === 'start') {
+    const now = Date.now() / 1000;
+    if (now - state.lastRepTime < COOLDOWN_SEC) {
+      state.feedback = 'Too fast — slow down!';
+      state.feedbackWarn = true;
+      state.stage = 'start';
+      return;
+    }
+    state.count++;
+    state.lastRepTime = now;
+    state.repTimes.push(now);
+    state.feedback = `Rep ${state.count} ✓`;
+    state.feedbackWarn = false;
+
+    if (state.repTimes.length >= 2) {
+      state.repDurations.push(state.repTimes.at(-1) - state.repTimes.at(-2));
+    }
+    state.angleMins.push(state.repAngleMin);
+    state.angleMaxs.push(state.repAngleMax);
+    state.repAngleMin = 999; state.repAngleMax = 0;
+
+    updateRepUI();
+  }
+}
+
+// ── UI UPDATES ─────────────────────────────────────────────────
+let lastFpsTime = Date.now(); let frameCount = 0;
+
+function updateRepUI() {
+  const rd = document.getElementById('repDisplay');
+  rd.textContent = state.count;
+  rd.classList.add('bump');
+  setTimeout(() => rd.classList.remove('bump'), 150);
+
+  const dot = document.createElement('div');
+  dot.className = 'rep-dot';
+  document.getElementById('repHistory').appendChild(dot);
+}
+
+function updateLiveUI() {
+  // angle badge
+  document.getElementById('angleBadge').textContent = Math.round(state.smoothAngle);
+
+  // ROM bar
+  const romPct = Math.min(state.smoothAngle / 180, 1) * 100;
+  document.getElementById('romFill').style.width = romPct + '%';
+  document.getElementById('romPct').textContent = Math.round(romPct) + '%';
+
+  // feedback
+  const pill = document.getElementById('feedbackPill');
+  pill.textContent = state.feedback;
+  pill.classList.toggle('warn', state.feedbackWarn);
+
+  // stage pills
+  document.getElementById('stageStart').classList.toggle('active', state.stage === 'start');
+  document.getElementById('stageEnd').classList.toggle('active', state.stage === 'end');
+
+  // stats
+  const elapsed = state.startTime ? (Date.now() - state.startTime) / 1000 : 0;
+  const mins = Math.floor(elapsed / 60), secs = Math.floor(elapsed % 60);
+  document.getElementById('statTime').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+
+  const rpm = elapsed > 0 && state.count > 0 ? (state.count / elapsed * 60).toFixed(1) : '--';
+  document.getElementById('statRPM').textContent = rpm;
+
+  const cadence = state.repDurations.length > 0
+    ? (state.repDurations.reduce((a,b)=>a+b,0)/state.repDurations.length).toFixed(1) + 's'
+    : '--';
+  document.getElementById('statCadence').textContent = cadence;
+
+  const avgROM = state.angleMins.length > 0
+    ? Math.round(state.angleMaxs.reduce((a,b)=>a+b,0)/state.angleMaxs.length -
+                 state.angleMins.reduce((a,b)=>a+b,0)/state.angleMins.length) + '°'
+    : '--°';
+  document.getElementById('statROM').textContent = avgROM;
+
+  // FPS
+  frameCount++;
+  const now = Date.now();
+  if (now - lastFpsTime > 1000) {
+    document.getElementById('fpsDisplay').textContent = frameCount + ' FPS';
+    frameCount = 0; lastFpsTime = now;
+  }
+}
+
+// ── CADENCE CHART ─────────────────────────────────────────────
+function drawCadenceChart() {
+  const canvas = document.getElementById('cadenceChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth; canvas.height = 60;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const data = state.repDurations;
+  if (!data.length) {
+    ctx.fillStyle = '#55556a';
+    ctx.font = '12px DM Mono';
+    ctx.fillText('No rep data yet', 10, 35);
+    return;
+  }
+
+  const max = Math.max(...data) + 0.5;
+  const bw = canvas.width / data.length - 4;
+  const avg = data.reduce((a,b)=>a+b,0)/data.length;
+
+  data.forEach((d,i) => {
+    const bh = (d / max) * 50;
+    const x = i * (bw + 4) + 2;
+    const y = 55 - bh;
+    ctx.fillStyle = d <= avg * 1.2 ? '#00ff88' : '#ff3c6e';
+    ctx.beginPath();
+    ctx.roundRect(x, y, bw, bh, 3);
+    ctx.fill();
+  });
+
+  // avg line
+  const avgY = 55 - (avg / max) * 50;
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, avgY); ctx.lineTo(canvas.width, avgY); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── MEDIAPIPE SETUP ───────────────────────────────────────────
+const videoEl  = document.getElementById('video');
+const poseCanvas = document.getElementById('poseCanvas');
+const poseCtx    = poseCanvas.getContext('2d');
+
+function onResults(results) {
+  poseCanvas.width  = videoEl.videoWidth;
+  poseCanvas.height = videoEl.videoHeight;
+
+  poseCtx.clearRect(0,0,poseCanvas.width,poseCanvas.height);
+  poseCtx.drawImage(results.image, 0, 0);
+
+  if (results.poseLandmarks) {
+    // draw connections
+    drawConnectors(poseCtx, results.poseLandmarks, POSE_CONNECTIONS,
+      { color: 'rgba(0,255,136,0.35)', lineWidth: 2 });
+    drawLandmarks(poseCtx, results.poseLandmarks,
+      { color: '#00ff88', fillColor: '#003322', lineWidth: 1, radius: 4 });
+
+    // calculate and smooth angle
+    const cfg = EXERCISES[state.exercise];
+    const [a,b,c] = cfg.joints;
+    const lms = results.poseLandmarks;
+    const rawAngle = calcAngle(lms, a, b, c);
+    state.smoothAngle = smooth(state.angleBuffer, rawAngle);
+
+    // range tracking
+    state.repAngleMin = Math.min(state.repAngleMin, state.smoothAngle);
+    state.repAngleMax = Math.max(state.repAngleMax, state.smoothAngle);
+
+    detectRep(state.smoothAngle);
+
+    // highlight active joints
+    [a,b,c].forEach(idx => {
+      const lm = lms[idx];
+      const x = lm.x * poseCanvas.width;
+      const y = lm.y * poseCanvas.height;
+      poseCtx.beginPath();
+      poseCtx.arc(x, y, 7, 0, 2*Math.PI);
+      poseCtx.fillStyle = '#ff3c6e';
+      poseCtx.fill();
+    });
+
+    // angle arc at joint b
+    const bLm = lms[b];
+    const bx = bLm.x * poseCanvas.width, by = bLm.y * poseCanvas.height;
+    const arcR = 30;
+    poseCtx.beginPath();
+    poseCtx.arc(bx, by, arcR, 0, (state.smoothAngle / 180) * Math.PI);
+    poseCtx.strokeStyle = 'rgba(0,255,136,0.8)';
+    poseCtx.lineWidth = 3;
+    poseCtx.stroke();
+    poseCtx.fillStyle = 'rgba(0,0,0,0.7)';
+    poseCtx.fillRect(bx + arcR + 5, by - 12, 45, 20);
+    poseCtx.fillStyle = '#00ff88';
+    poseCtx.font = 'bold 13px DM Mono';
+    poseCtx.fillText(Math.round(state.smoothAngle) + '°', bx + arcR + 8, by + 4);
+  }
+
+  updateLiveUI();
+}
+
+// ── CAMERA START ──────────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', async () => {
+  document.getElementById('startOverlay').classList.add('hidden');
+  document.getElementById('statusDot').classList.add('live');
+  document.getElementById('statusText').textContent = 'Loading AI…';
+  state.startTime = Date.now();
+
+  const pose = new Pose({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+  pose.setOptions({ modelComplexity: 1, smoothLandmarks: true,
+    minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+  pose.onResults(onResults);
+
+  const camera = new Camera(videoEl, {
+    onFrame: async () => { await pose.send({ image: videoEl }); },
+    width: 1280, height: 720,
+  });
+  await camera.start();
+  document.getElementById('statusText').textContent = 'Live';
+});
+
+// ── CONTROLS ──────────────────────────────────────────────────
+document.getElementById('exerciseSelect').addEventListener('change', e => {
+  state.exercise = e.target.value;
+  resetState(true);
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => resetState(true));
+
+document.getElementById('summaryBtn').addEventListener('click', () => {
+  const elapsed = state.startTime ? (Date.now() - state.startTime) / 1000 : 0;
+  const mins = Math.floor(elapsed/60), secs = Math.floor(elapsed%60);
+  const rpm = elapsed > 0 && state.count > 0 ? (state.count/elapsed*60).toFixed(1) : '--';
+  const avg = state.repDurations.length > 0
+    ? (state.repDurations.reduce((a,b)=>a+b,0)/state.repDurations.length).toFixed(2)+'s' : '--';
+  const rom = state.angleMins.length > 0
+    ? Math.round(state.angleMaxs.reduce((a,b)=>a+b,0)/state.angleMaxs.length -
+                 state.angleMins.reduce((a,b)=>a+b,0)/state.angleMins.length)+'°' : '--';
+  const exLabel = document.getElementById('exerciseSelect').options[document.getElementById('exerciseSelect').selectedIndex].text;
+
+  document.getElementById('mReps').textContent = state.count;
+  document.getElementById('mRPM').textContent = rpm;
+  document.getElementById('mCadence').textContent = avg;
+  document.getElementById('mROM').textContent = rom;
+  document.getElementById('mDuration').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+  document.getElementById('mExercise').textContent = exLabel;
+
+  document.getElementById('modalBg').classList.add('show');
+  setTimeout(drawCadenceChart, 50);
+});
+
+document.getElementById('closeModal').addEventListener('click', () =>
+  document.getElementById('modalBg').classList.remove('show'));
+
+document.getElementById('newSession').addEventListener('click', () => {
+  resetState(false);
+  document.getElementById('modalBg').classList.remove('show');
+  document.getElementById('repDisplay').textContent = '0';
+});
+
+document.getElementById('modalBg').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+});
+</script>
+</body>
+</html>

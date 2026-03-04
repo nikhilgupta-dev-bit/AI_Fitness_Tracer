@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RepTrack — AI Workout Counter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #13131a;
+      --border:   #1e1e2e;
+      --accent:   #00ff88;
+      --accent2:  #ff3c6e;
+      --text:     #e8e8f0;
+      --muted:    #55556a;
+      --panel:    rgba(19,19,26,0.92);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,136,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+    }
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 3px;
+      color: var(--accent);
+      text-shadow: 0 0 20px rgba(0,255,136,.4);
+    }
+    .logo span { color: var(--text); }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      display: inline-block; margin-right: 8px;
+      transition: background .3s;
+    }
+    .status-dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .app {
+      position: relative; z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 0;
+      height: calc(100vh - 65px);
+    }
+
+    .camera-wrap {
+      position: relative;
+      background: #000;
+      overflow: hidden;
+    }
+    #videoFeed {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .cam-overlay {
+      position: absolute; inset: 0; z-index: 4;
+      pointer-events: none;
+    }
+
+    .angle-badge {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(0,0,0,.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: .85rem;
+    }
+    .angle-badge span { color: var(--accent); font-size: 1.4rem; font-weight: 500; }
+
+    .feedback-pill {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.8);
+      border: 1px solid var(--accent);
+      border-radius: 40px;
+      padding: 10px 28px;
+      font-size: 1rem; font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 1px;
+      text-align: center;
+      white-space: nowrap;
+      transition: border-color .3s, color .3s;
+      min-width: 220px;
+    }
+    .feedback-pill.warn { border-color: var(--accent2); color: var(--accent2); }
+
+    .start-overlay {
+      position: absolute; inset: 0; z-index: 10;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(10,10,15,.85);
+      backdrop-filter: blur(6px);
+      gap: 20px;
+      transition: opacity .4s;
+    }
+    .start-overlay.hidden { opacity: 0; pointer-events: none; }
+    .start-overlay h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.5rem; letter-spacing: 4px;
+      color: var(--accent);
+    }
+    .start-overlay p { color: var(--muted); font-size: .95rem; text-align: center; max-width: 360px; line-height: 1.6; }
+    .btn-start {
+      background: var(--accent); color: #000;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 700; font-size: 1rem;
+      border: none; border-radius: 8px;
+      padding: 14px 40px; cursor: pointer;
+      letter-spacing: 1px;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-start:hover { transform: scale(1.04); box-shadow: 0 0 24px rgba(0,255,136,.4); }
+
+    .side {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .side-section {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .side-label {
+      font-family: 'DM Mono', monospace;
+      font-size: .65rem; letter-spacing: 3px;
+      color: var(--muted); text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .rep-display {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 7rem; line-height: 1;
+      color: var(--accent);
+      text-shadow: 0 0 30px rgba(0,255,136,.3);
+      text-align: center;
+      transition: transform .1s;
+    }
+    .rep-display.bump { transform: scale(1.12); }
+
+    .stage-bar { display: flex; gap: 8px; margin-top: 12px; }
+    .stage-pill {
+      flex: 1; padding: 6px;
+      border-radius: 6px; text-align: center;
+      font-family: 'DM Mono', monospace;
+      font-size: .7rem; letter-spacing: 2px;
+      background: var(--border); color: var(--muted);
+      transition: background .3s, color .3s;
+    }
+    .stage-pill.active { background: var(--accent); color: #000; }
+
+    select {
+      width: 100%;
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      font-family: 'DM Sans', sans-serif; font-size: .9rem;
+      cursor: pointer; outline: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2355556a' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+    }
+    select:focus { border-color: var(--accent); }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px;
+    }
+    .stat-card .val {
+      font-family: 'DM Mono', monospace;
+      font-size: 1.3rem; color: var(--text);
+      margin-bottom: 2px;
+    }
+    .stat-card .lbl {
+      font-size: .68rem; color: var(--muted); letter-spacing: 1px;
+    }
+
+    .rom-track {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px; height: 10px;
+      overflow: hidden; margin-top: 8px;
+    }
+    .rom-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent), #00ccff);
+      border-radius: 20px;
+      transition: width .2s;
+    }
+
+    .rep-history {
+      display: flex; gap: 4px; flex-wrap: wrap;
+      max-height: 80px; overflow: hidden;
+    }
+    .rep-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent);
+      opacity: 0; transform: scale(0);
+      animation: popIn .3s forwards;
+    }
+    @keyframes popIn { to { opacity:1; transform:scale(1); } }
+
+    .btn-row { display: flex; gap: 10px; }
+    .btn {
+      flex: 1; padding: 11px;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: .85rem;
+      cursor: pointer; transition: all .2s;
+      letter-spacing: .5px;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    .modal-bg {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,.85); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .modal-bg.show { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px;
+      width: 480px; max-width: 95vw;
+      transform: translateY(20px);
+      transition: transform .3s;
+    }
+    .modal-bg.show .modal { transform: translateY(0); }
+    .modal h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem; letter-spacing: 3px;
+      color: var(--accent); margin-bottom: 24px;
+    }
+    .modal-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+    .modal-stat { background: var(--bg); border-radius: 10px; padding: 14px; }
+    .modal-stat .v { font-family: 'DM Mono', monospace; font-size: 1.5rem; color: var(--text); }
+    .modal-stat .l { font-size: .7rem; color: var(--muted); margin-top: 2px; letter-spacing: 1px; }
+    #cadenceChart { width:100%; height:60px; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Rep<span>Track</span></div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Camera off</span>
+  </div>
+  <div style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--muted)" id="fpsDisplay">-- FPS</div>
+</header>
+
+<div class="app">
+
+  <div class="camera-wrap">
+    <img id="videoFeed" alt="Video feed"/>
+
+    <div class="cam-overlay">
+      <div class="angle-badge">
+        ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
+      </div>
+      <div class="feedback-pill" id="feedbackPill">Get into position…</div>
+    </div>
+
+    <div class="start-overlay" id="startOverlay">
+      <h2>AI Rep Counter</h2>
+      <p>Runs your webcam through the Python rep counter (MediaPipe Pose) and streams results to this UI.</p>
+      <button class="btn-start" id="startBtn">Start</button>
+      <p style="max-width:520px">
+        Note: this uses the <b>server machine's</b> webcam. For remote users, you'd need a WebRTC upload pipeline.
+      </p>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="side-section">
+      <div class="side-label">Reps</div>
+      <div class="rep-display" id="repDisplay">0</div>
+      <div class="stage-bar">
+        <div class="stage-pill" id="stageStart">START</div>
+        <div class="stage-pill" id="stageEnd">END</div>
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Exercise</div>
+      <select id="exerciseSelect"></select>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Live Stats</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="val" id="statRPM">--</div><div class="lbl">REPS/MIN</div></div>
+        <div class="stat-card"><div class="val" id="statCadence">--</div><div class="lbl">SEC/REP</div></div>
+        <div class="stat-card"><div class="val" id="statROM">--°</div><div class="lbl">AVG ROM</div></div>
+        <div class="stat-card"><div class="val" id="statTime">0:00</div><div class="lbl">DURATION</div></div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-bottom:4px">
+          <span>Range of Motion</span><span id="romPct">0%</span>
+        </div>
+        <div class="rom-track"><div class="rom-fill" id="romFill"></div></div>
+      </div>
+    </div>
+
+    <div class="side-section" style="flex:1">
+      <div class="side-label">Rep History</div>
+      <div class="rep-history" id="repHistory"></div>
+    </div>
+
+    <div class="side-section">
+      <div class="btn-row">
+        <button class="btn" id="summaryBtn">Summary</button>
+        <button class="btn danger" id="resetBtn">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2>Workout Summary</h2>
+    <div class="modal-stats">
+      <div class="modal-stat"><div class="v" id="mReps">0</div><div class="l">TOTAL REPS</div></div>
+      <div class="modal-stat"><div class="v" id="mRPM">--</div><div class="l">REPS / MIN</div></div>
+      <div class="modal-stat"><div class="v" id="mCadence">--</div><div class="l">AVG CADENCE</div></div>
+      <div class="modal-stat"><div class="v" id="mROM">--</div><div class="l">AVG ROM</div></div>
+      <div class="modal-stat"><div class="v" id="mDuration">0:00</div><div class="l">DURATION</div></div>
+      <div class="modal-stat"><div class="v" id="mExercise">--</div><div class="l">EXERCISE</div></div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:.7rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
+      <canvas id="cadenceChart"></canvas>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="closeModal">Close</button>
+      <button class="btn danger" id="newSession">New Session</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const els = {
+    statusDot: document.getElementById('statusDot'),
+    statusText: document.getElementById('statusText'),
+    fpsDisplay: document.getElementById('fpsDisplay'),
+    startOverlay: document.getElementById('startOverlay'),
+    startBtn: document.getElementById('startBtn'),
+    videoFeed: document.getElementById('videoFeed'),
+    angleBadge: document.getElementById('angleBadge'),
+    feedbackPill: document.getElementById('feedbackPill'),
+    repDisplay: document.getElementById('repDisplay'),
+    stageStart: document.getElementById('stageStart'),
+    stageEnd: document.getElementById('stageEnd'),
+    exerciseSelect: document.getElementById('exerciseSelect'),
+    statRPM: document.getElementById('statRPM'),
+    statCadence: document.getElementById('statCadence'),
+    statROM: document.getElementById('statROM'),
+    statTime: document.getElementById('statTime'),
+    romPct: document.getElementById('romPct'),
+    romFill: document.getElementById('romFill'),
+    repHistory: document.getElementById('repHistory'),
+    summaryBtn: document.getElementById('summaryBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    modalBg: document.getElementById('modalBg'),
+    closeModal: document.getElementById('closeModal'),
+    newSession: document.getElementById('newSession'),
+    mReps: document.getElementById('mReps'),
+    mRPM: document.getElementById('mRPM'),
+    mCadence: document.getElementById('mCadence'),
+    mROM: document.getElementById('mROM'),
+    mDuration: document.getElementById('mDuration'),
+    mExercise: document.getElementById('mExercise'),
+  };
+
+  let latest = null;
+  let lastCount = 0;
+  let events = null;
+
+  function fmtTime(sec) {
+    const mins = Math.floor(sec / 60);
+    const secs = Math.floor(sec % 60);
+    return `${mins}:${secs.toString().padStart(2,'0')}`;
+  }
+
+  function bumpReps() {
+    els.repDisplay.classList.add('bump');
+    setTimeout(() => els.repDisplay.classList.remove('bump'), 150);
+  }
+
+  function addRepDots(n) {
+    for (let i = 0; i < n; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'rep-dot';
+      els.repHistory.appendChild(dot);
+    }
+  }
+
+  function updateUI(s) {
+    latest = s;
+    els.angleBadge.textContent = Math.round(s.angle ?? 0);
+    els.fpsDisplay.textContent = `${Math.round(s.fps ?? 0)} FPS`;
+
+    els.feedbackPill.textContent = s.feedback || 'Get into position…';
+    els.feedbackPill.classList.toggle('warn', (s.feedback || '').toLowerCase().includes('too fast'));
+
+    const cnt = Number(s.count ?? 0);
+    els.repDisplay.textContent = cnt;
+    if (cnt > lastCount) {
+      bumpReps();
+      addRepDots(cnt - lastCount);
+      lastCount = cnt;
+    }
+
+    els.stageStart.classList.toggle('active', s.stage === 'start');
+    els.stageEnd.classList.toggle('active', s.stage === 'end');
+
+    const elapsed = Number(s.elapsed_sec ?? 0);
+    els.statTime.textContent = fmtTime(elapsed);
+
+    const rpm = Number(s.rpm ?? 0);
+    els.statRPM.textContent = rpm > 0 ? rpm.toFixed(1) : '--';
+
+    const cad = Number(s.avg_cadence ?? 0);
+    els.statCadence.textContent = cad > 0 ? `${cad.toFixed(1)}s` : '--';
+
+    const rom = Number(s.avg_rom ?? 0);
+    els.statROM.textContent = rom > 0 ? `${Math.round(rom)}°` : '--°';
+
+    const romPct = Math.min(Math.max((Number(s.angle ?? 0) / 180) * 100, 0), 100);
+    els.romFill.style.width = romPct + '%';
+    els.romPct.textContent = Math.round(romPct) + '%';
+  }
+
+  function drawCadenceChart(repDurations) {
+    const canvas = document.getElementById('cadenceChart');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 60;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const data = Array.isArray(repDurations) ? repDurations : [];
+    if (!data.length) {
+      ctx.fillStyle = '#55556a';
+      ctx.font = '12px DM Mono';
+      ctx.fillText('No rep data yet', 10, 35);
+      return;
+    }
+
+    const max = Math.max(...data) + 0.5;
+    const bw = canvas.width / data.length - 4;
+    const avg = data.reduce((a,b)=>a+b,0) / data.length;
+
+    data.forEach((d, i) => {
+      const bh = (d / max) * 50;
+      const x = i * (bw + 4) + 2;
+      const y = 55 - bh;
+      ctx.fillStyle = d <= avg * 1.2 ? '#00ff88' : '#ff3c6e';
+      ctx.beginPath();
+      ctx.roundRect(x, y, bw, bh, 3);
+      ctx.fill();
+    });
+
+    const avgY = 55 - (avg / max) * 50;
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(0, avgY);
+    ctx.lineTo(canvas.width, avgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body || {}),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
+  async function loadExercises() {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    els.exerciseSelect.innerHTML = '';
+    (cfg.exercises || []).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      els.exerciseSelect.appendChild(opt);
+    });
+  }
+
+  function connectEvents() {
+    if (events) events.close();
+    events = new EventSource('/api/session/events');
+    events.onmessage = (e) => {
+      try { updateUI(JSON.parse(e.data)); } catch (_) {}
+    };
+    events.onerror = () => {
+      // keep default auto-reconnect behavior
+    };
+  }
+
+  async function startSession() {
+    els.statusDot.classList.add('live');
+    els.statusText.textContent = 'Starting…';
+    els.startOverlay.classList.add('hidden');
+
+    const exercise = els.exerciseSelect.value;
+    await api('/api/session/start', { exercise });
+
+    els.videoFeed.style.display = 'block';
+    els.videoFeed.src = '/api/video?ts=' + Date.now();
+    els.statusText.textContent = 'Live';
+
+    connectEvents();
+  }
+
+  function clearSessionUI() {
+    latest = null;
+    lastCount = 0;
+    els.repDisplay.textContent = '0';
+    els.angleBadge.textContent = '--';
+    els.feedbackPill.textContent = 'Get into position…';
+    els.repHistory.innerHTML = '';
+    els.statRPM.textContent = '--';
+    els.statCadence.textContent = '--';
+    els.statROM.textContent = '--°';
+    els.statTime.textContent = '0:00';
+    els.romFill.style.width = '0%';
+    els.romPct.textContent = '0%';
+  }
+
+  els.startBtn.addEventListener('click', () => startSession().catch(err => {
+    els.statusDot.classList.remove('live');
+    els.statusText.textContent = 'Error starting camera';
+    els.startOverlay.classList.remove('hidden');
+    alert(err.message || String(err));
+  }));
+
+  els.exerciseSelect.addEventListener('change', async (e) => {
+    try {
+      await api('/api/session/exercise', { exercise: e.target.value });
+      clearSessionUI();
+    } catch (_) {}
+  });
+
+  els.resetBtn.addEventListener('click', async () => {
+    await api('/api/session/reset');
+    clearSessionUI();
+  });
+
+  els.summaryBtn.addEventListener('click', () => {
+    const s = latest || {};
+    els.mReps.textContent = String(s.count ?? 0);
+    els.mRPM.textContent = (Number(s.rpm ?? 0) > 0) ? Number(s.rpm).toFixed(1) : '--';
+    els.mCadence.textContent = (Number(s.avg_cadence ?? 0) > 0) ? `${Number(s.avg_cadence).toFixed(2)}s` : '--';
+    els.mROM.textContent = (Number(s.avg_rom ?? 0) > 0) ? `${Math.round(Number(s.avg_rom))}°` : '--';
+    els.mDuration.textContent = fmtTime(Number(s.elapsed_sec ?? 0));
+    els.mExercise.textContent = s.exercise || '--';
+    els.modalBg.classList.add('show');
+    setTimeout(() => drawCadenceChart(s.rep_durations || []), 50);
+  });
+
+  els.closeModal.addEventListener('click', () => els.modalBg.classList.remove('show'));
+  els.modalBg.addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+  els.newSession.addEventListener('click', async () => {
+    await api('/api/session/reset');
+    clearSessionUI();
+    els.modalBg.classList.remove('show');
+  });
+
+  (async () => {
+    await loadExercises();
+    els.statusText.textContent = 'Ready';
+  })();
+</script>
+</body>
+</html>
+
