@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["...", "libxcb", "libX11", "libXext", "libXrender", "libgl1"]
+
+[phases.install]
+cmds = ["python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt"]
