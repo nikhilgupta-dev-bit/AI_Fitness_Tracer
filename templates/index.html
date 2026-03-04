@@ -4,18 +4,21 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RepTrack — AI Workout Counter</title>
+  <meta name="description" content="AI-powered rep counter using MediaPipe Pose. Track bicep curls, squats, push-ups and more in real-time from your browser."/>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
   <style>
     :root {
-      --bg:       #0a0a0f;
-      --surface:  #13131a;
-      --border:   #1e1e2e;
-      --accent:   #00ff88;
-      --accent2:  #ff3c6e;
-      --text:     #e8e8f0;
-      --muted:    #55556a;
-      --panel:    rgba(19,19,26,0.92);
+      --bg:      #08080f;
+      --surface: #111118;
+      --border:  #1c1c2e;
+      --accent:  #00ff88;
+      --accent2: #ff3c6e;
+      --accent3: #7c6bff;
+      --text:    #e8e8f0;
+      --muted:   #4a4a64;
+      --panel:   rgba(17,17,24,0.94);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,124 +28,143 @@
       color: var(--text);
       font-family: 'DM Sans', sans-serif;
       min-height: 100vh;
-      overflow-x: hidden;
+      overflow: hidden;
     }
 
+    /* Subtle animated grid */
     body::before {
       content: '';
       position: fixed; inset: 0;
       background-image:
-        linear-gradient(rgba(0,255,136,.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,255,136,.03) 1px, transparent 1px);
-      background-size: 40px 40px;
+        linear-gradient(rgba(0,255,136,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,.025) 1px, transparent 1px);
+      background-size: 44px 44px;
       pointer-events: none;
       z-index: 0;
+      animation: gridDrift 20s linear infinite;
     }
+    @keyframes gridDrift { to { background-position: 44px 44px; } }
 
+    /* ── Header ── */
     header {
       position: relative; z-index: 10;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 18px 32px;
+      padding: 14px 28px;
       border-bottom: 1px solid var(--border);
       background: var(--panel);
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(14px);
     }
     .logo {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 2rem;
-      letter-spacing: 3px;
+      font-size: 1.9rem; letter-spacing: 4px;
       color: var(--accent);
-      text-shadow: 0 0 20px rgba(0,255,136,.4);
+      text-shadow: 0 0 22px rgba(0,255,136,.45);
     }
     .logo span { color: var(--text); }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--muted);
-      display: inline-block; margin-right: 8px;
-      transition: background .3s;
-    }
-    .status-dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
+    .header-right { display: flex; align-items: center; gap: 20px; }
+    .conn-indicator { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+    .conn-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); transition: background .3s;
+    }
+    .conn-dot.connected { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+    .conn-dot.error     { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    #fpsDisplay { font-family: 'DM Mono', monospace; font-size: .75rem; color: var(--muted); min-width: 50px; text-align: right; }
+
+    /* ── Layout ── */
     .app {
       position: relative; z-index: 1;
       display: grid;
       grid-template-columns: 1fr 340px;
-      gap: 0;
-      height: calc(100vh - 65px);
+      height: calc(100vh - 57px);
     }
 
+    /* ── Camera pane ── */
     .camera-wrap {
       position: relative;
       background: #000;
       overflow: hidden;
     }
-    #videoFeed {
+
+    /* Mirror the video (selfie view) */
+    #webcam {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover;
+      transform: scaleX(-1);
       display: none;
     }
 
-    .cam-overlay {
-      position: absolute; inset: 0; z-index: 4;
+    /* Canvas sits on top, also mirrored so landmarks align */
+    #poseCanvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      transform: scaleX(-1);
       pointer-events: none;
     }
 
+    /* Angle badge */
     .angle-badge {
-      position: absolute; top: 16px; left: 16px;
-      background: rgba(0,0,0,.7);
+      position: absolute; top: 16px; left: 16px; z-index: 5;
+      background: rgba(0,0,0,.72);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 14px;
-      font-family: 'DM Mono', monospace;
-      font-size: .85rem;
+      border-radius: 8px; padding: 8px 14px;
+      font-family: 'DM Mono', monospace; font-size: .8rem;
+      backdrop-filter: blur(6px);
     }
-    .angle-badge span { color: var(--accent); font-size: 1.4rem; font-weight: 500; }
+    .angle-badge span { color: var(--accent); font-size: 1.4rem; }
 
+    /* Feedback pill */
     .feedback-pill {
-      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.8);
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.82);
       border: 1px solid var(--accent);
-      border-radius: 40px;
-      padding: 10px 28px;
+      border-radius: 40px; padding: 10px 32px;
       font-size: 1rem; font-weight: 500;
-      color: var(--accent);
-      letter-spacing: 1px;
-      text-align: center;
-      white-space: nowrap;
-      transition: border-color .3s, color .3s;
-      min-width: 220px;
+      color: var(--accent); letter-spacing: 1px;
+      white-space: nowrap; text-align: center;
+      transition: border-color .25s, color .25s;
+      backdrop-filter: blur(6px);
+      z-index: 5; min-width: 220px;
     }
     .feedback-pill.warn { border-color: var(--accent2); color: var(--accent2); }
 
+    /* Start / permission overlay */
     .start-overlay {
-      position: absolute; inset: 0; z-index: 10;
+      position: absolute; inset: 0; z-index: 20;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      background: rgba(10,10,15,.85);
-      backdrop-filter: blur(6px);
+      background: rgba(8,8,15,.9);
+      backdrop-filter: blur(8px);
       gap: 20px;
       transition: opacity .4s;
     }
     .start-overlay.hidden { opacity: 0; pointer-events: none; }
     .start-overlay h2 {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 2.5rem; letter-spacing: 4px;
+      font-size: 2.6rem; letter-spacing: 5px;
       color: var(--accent);
+      text-shadow: 0 0 30px rgba(0,255,136,.5);
     }
-    .start-overlay p { color: var(--muted); font-size: .95rem; text-align: center; max-width: 360px; line-height: 1.6; }
+    .start-overlay p { color: var(--muted); font-size: .9rem; text-align: center; max-width: 380px; line-height: 1.7; }
+
     .btn-start {
       background: var(--accent); color: #000;
       font-family: 'DM Sans', sans-serif;
       font-weight: 700; font-size: 1rem;
-      border: none; border-radius: 8px;
-      padding: 14px 40px; cursor: pointer;
+      border: none; border-radius: 10px;
+      padding: 14px 48px; cursor: pointer;
       letter-spacing: 1px;
       transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 0 24px rgba(0,255,136,.3);
     }
-    .btn-start:hover { transform: scale(1.04); box-shadow: 0 0 24px rgba(0,255,136,.4); }
+    .btn-start:hover { transform: scale(1.05); box-shadow: 0 0 36px rgba(0,255,136,.55); }
+    .btn-start:active { transform: scale(.98); }
 
+    /* ── Sidebar ── */
     .side {
       background: var(--surface);
       border-left: 1px solid var(--border);
@@ -151,70 +173,74 @@
     }
 
     .side-section {
-      padding: 20px 24px;
+      padding: 18px 22px;
       border-bottom: 1px solid var(--border);
     }
     .side-label {
       font-family: 'DM Mono', monospace;
-      font-size: .65rem; letter-spacing: 3px;
+      font-size: .6rem; letter-spacing: 3px;
       color: var(--muted); text-transform: uppercase;
       margin-bottom: 10px;
     }
 
+    /* Rep counter */
     .rep-display {
       font-family: 'Bebas Neue', sans-serif;
       font-size: 7rem; line-height: 1;
       color: var(--accent);
-      text-shadow: 0 0 30px rgba(0,255,136,.3);
+      text-shadow: 0 0 30px rgba(0,255,136,.25);
       text-align: center;
       transition: transform .1s;
     }
-    .rep-display.bump { transform: scale(1.12); }
+    .rep-display.bump { transform: scale(1.14); }
 
     .stage-bar { display: flex; gap: 8px; margin-top: 12px; }
     .stage-pill {
-      flex: 1; padding: 6px;
+      flex: 1; padding: 7px;
       border-radius: 6px; text-align: center;
       font-family: 'DM Mono', monospace;
-      font-size: .7rem; letter-spacing: 2px;
+      font-size: .65rem; letter-spacing: 2px;
       background: var(--border); color: var(--muted);
-      transition: background .3s, color .3s;
+      transition: background .25s, color .25s;
     }
     .stage-pill.active { background: var(--accent); color: #000; }
 
+    /* Exercise select */
     select {
       width: 100%;
       background: var(--bg); color: var(--text);
       border: 1px solid var(--border);
       border-radius: 8px; padding: 10px 14px;
-      font-family: 'DM Sans', sans-serif; font-size: .9rem;
-      cursor: pointer; outline: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2355556a' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      font-family: 'DM Sans', sans-serif; font-size: .88rem;
+      cursor: pointer; outline: none; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a4a64' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 14px center;
+      transition: border-color .2s;
     }
     select:focus { border-color: var(--accent); }
 
+    /* Stats grid */
     .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .stat-card {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px; padding: 12px;
+      transition: border-color .2s;
     }
+    .stat-card:hover { border-color: #2a2a42; }
     .stat-card .val {
       font-family: 'DM Mono', monospace;
-      font-size: 1.3rem; color: var(--text);
-      margin-bottom: 2px;
+      font-size: 1.25rem; color: var(--text);
+      margin-bottom: 3px;
     }
-    .stat-card .lbl {
-      font-size: .68rem; color: var(--muted); letter-spacing: 1px;
-    }
+    .stat-card .lbl { font-size: .63rem; color: var(--muted); letter-spacing: 1px; }
 
+    /* ROM bar */
     .rom-track {
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 20px; height: 10px;
+      border-radius: 20px; height: 9px;
       overflow: hidden; margin-top: 8px;
     }
     .rom-fill {
@@ -224,9 +250,10 @@
       transition: width .2s;
     }
 
+    /* Rep history */
     .rep-history {
-      display: flex; gap: 4px; flex-wrap: wrap;
-      max-height: 80px; overflow: hidden;
+      display: flex; gap: 5px; flex-wrap: wrap;
+      max-height: 72px; overflow: hidden;
     }
     .rep-dot {
       width: 10px; height: 10px; border-radius: 50%;
@@ -234,23 +261,25 @@
       opacity: 0; transform: scale(0);
       animation: popIn .3s forwards;
     }
-    @keyframes popIn { to { opacity:1; transform:scale(1); } }
+    @keyframes popIn { to { opacity: 1; transform: scale(1); } }
 
+    /* Buttons */
     .btn-row { display: flex; gap: 10px; }
     .btn {
       flex: 1; padding: 11px;
       border-radius: 8px; border: 1px solid var(--border);
       background: transparent; color: var(--text);
       font-family: 'DM Sans', sans-serif; font-size: .85rem;
-      cursor: pointer; transition: all .2s;
-      letter-spacing: .5px;
+      cursor: pointer; transition: all .2s; letter-spacing: .5px;
     }
     .btn:hover { border-color: var(--accent); color: var(--accent); }
     .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
 
+    /* Summary modal */
     .modal-bg {
       position: fixed; inset: 0; z-index: 100;
-      background: rgba(0,0,0,.85); backdrop-filter: blur(8px);
+      background: rgba(0,0,0,.88); backdrop-filter: blur(10px);
       display: flex; align-items: center; justify-content: center;
       opacity: 0; pointer-events: none;
       transition: opacity .3s;
@@ -259,9 +288,9 @@
     .modal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px; padding: 36px;
-      width: 480px; max-width: 95vw;
-      transform: translateY(20px);
+      border-radius: 18px; padding: 36px;
+      width: 500px; max-width: 95vw;
+      transform: translateY(24px);
       transition: transform .3s;
     }
     .modal-bg.show .modal { transform: translateY(0); }
@@ -273,47 +302,61 @@
     .modal-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
     .modal-stat { background: var(--bg); border-radius: 10px; padding: 14px; }
     .modal-stat .v { font-family: 'DM Mono', monospace; font-size: 1.5rem; color: var(--text); }
-    .modal-stat .l { font-size: .7rem; color: var(--muted); margin-top: 2px; letter-spacing: 1px; }
-    #cadenceChart { width:100%; height:60px; }
+    .modal-stat .l { font-size: .68rem; color: var(--muted); margin-top: 2px; letter-spacing: 1px; }
+    #cadenceChart { width: 100%; height: 60px; }
 
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* Error toast */
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--accent2);
+      border-radius: 10px; padding: 14px 28px;
+      color: var(--accent2); font-size: .9rem;
+      z-index: 999; pointer-events: none;
+      opacity: 0; transition: opacity .3s;
+    }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Rep<span>Track</span></div>
-  <div style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">Camera off</span>
+  <div class="header-right">
+    <div class="conn-indicator">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connText">Connecting…</span>
+    </div>
+    <div id="fpsDisplay">-- FPS</div>
   </div>
-  <div style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--muted)" id="fpsDisplay">-- FPS</div>
 </header>
 
 <div class="app">
 
+  <!-- ── Camera pane ── -->
   <div class="camera-wrap">
-    <img id="videoFeed" alt="Video feed"/>
+    <video id="webcam" autoplay muted playsinline></video>
+    <canvas id="poseCanvas"></canvas>
 
-    <div class="cam-overlay">
-      <div class="angle-badge">
-        ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
-      </div>
-      <div class="feedback-pill" id="feedbackPill">Get into position…</div>
+    <!-- Overlays -->
+    <div class="angle-badge">
+      ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
     </div>
+    <div class="feedback-pill" id="feedbackPill">Get into position…</div>
 
+    <!-- Start overlay -->
     <div class="start-overlay" id="startOverlay">
       <h2>AI Rep Counter</h2>
-      <p>Runs your webcam through the Python rep counter (MediaPipe Pose) and streams results to this UI.</p>
-      <button class="btn-start" id="startBtn">Start</button>
-      <p style="max-width:520px">
-        Note: this uses the <b>server machine's</b> webcam. For remote users, you'd need a WebRTC upload pipeline.
-      </p>
+      <p>Your webcam stays in the browser — only pose data is sent to the server. Click Start and allow camera access.</p>
+      <button class="btn-start" id="startBtn">Start Camera</button>
+      <p style="font-size:.78rem;color:var(--muted)">Works on any device with a camera &nbsp;·&nbsp; MediaPipe runs on the server</p>
     </div>
   </div>
 
+  <!-- ── Sidebar ── -->
   <div class="side">
     <div class="side-section">
       <div class="side-label">Reps</div>
@@ -338,7 +381,7 @@
         <div class="stat-card"><div class="val" id="statTime">0:00</div><div class="lbl">DURATION</div></div>
       </div>
       <div style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-bottom:4px">
           <span>Range of Motion</span><span id="romPct">0%</span>
         </div>
         <div class="rom-track"><div class="rom-fill" id="romFill"></div></div>
@@ -359,6 +402,7 @@
   </div>
 </div>
 
+<!-- Summary modal -->
 <div class="modal-bg" id="modalBg">
   <div class="modal">
     <h2>Workout Summary</h2>
@@ -368,10 +412,10 @@
       <div class="modal-stat"><div class="v" id="mCadence">--</div><div class="l">AVG CADENCE</div></div>
       <div class="modal-stat"><div class="v" id="mROM">--</div><div class="l">AVG ROM</div></div>
       <div class="modal-stat"><div class="v" id="mDuration">0:00</div><div class="l">DURATION</div></div>
-      <div class="modal-stat"><div class="v" id="mExercise">--</div><div class="l">EXERCISE</div></div>
+      <div class="modal-stat"><div class="v" id="mExercise" style="font-size:1rem">--</div><div class="l">EXERCISE</div></div>
     </div>
     <div style="margin-bottom:20px">
-      <div style="font-size:.7rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
+      <div style="font-size:.68rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
       <canvas id="cadenceChart"></canvas>
     </div>
     <div class="btn-row">
@@ -381,247 +425,345 @@
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
-  const els = {
-    statusDot: document.getElementById('statusDot'),
-    statusText: document.getElementById('statusText'),
-    fpsDisplay: document.getElementById('fpsDisplay'),
-    startOverlay: document.getElementById('startOverlay'),
-    startBtn: document.getElementById('startBtn'),
-    videoFeed: document.getElementById('videoFeed'),
-    angleBadge: document.getElementById('angleBadge'),
-    feedbackPill: document.getElementById('feedbackPill'),
-    repDisplay: document.getElementById('repDisplay'),
-    stageStart: document.getElementById('stageStart'),
-    stageEnd: document.getElementById('stageEnd'),
-    exerciseSelect: document.getElementById('exerciseSelect'),
-    statRPM: document.getElementById('statRPM'),
-    statCadence: document.getElementById('statCadence'),
-    statROM: document.getElementById('statROM'),
-    statTime: document.getElementById('statTime'),
-    romPct: document.getElementById('romPct'),
-    romFill: document.getElementById('romFill'),
-    repHistory: document.getElementById('repHistory'),
-    summaryBtn: document.getElementById('summaryBtn'),
-    resetBtn: document.getElementById('resetBtn'),
-    modalBg: document.getElementById('modalBg'),
-    closeModal: document.getElementById('closeModal'),
-    newSession: document.getElementById('newSession'),
-    mReps: document.getElementById('mReps'),
-    mRPM: document.getElementById('mRPM'),
-    mCadence: document.getElementById('mCadence'),
-    mROM: document.getElementById('mROM'),
-    mDuration: document.getElementById('mDuration'),
-    mExercise: document.getElementById('mExercise'),
-  };
+// ── MediaPipe Pose connections (33 landmarks) ─────────────────────────────────
+const POSE_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,7],[0,4],[4,5],[5,6],[6,8],
+  [9,10],[11,12],[11,13],[13,15],[15,17],[15,19],[15,21],[17,19],
+  [12,14],[14,16],[16,18],[16,20],[16,22],[18,20],
+  [11,23],[12,24],[23,24],[23,25],[24,26],
+  [25,27],[26,28],[27,29],[28,30],[29,31],[30,32],[27,31],[28,32]
+];
 
-  let latest = null;
-  let lastCount = 0;
-  let events = null;
+// Landmark color groups
+const LM_COLORS = {
+  face:  [0,1,2,3,4,5,6,7,8,9,10],
+  upper: [11,12,13,14,15,16,17,18,19,20,21,22],
+  torso: [23,24],
+  lower: [25,26,27,28,29,30,31,32],
+};
 
-  function fmtTime(sec) {
-    const mins = Math.floor(sec / 60);
-    const secs = Math.floor(sec % 60);
-    return `${mins}:${secs.toString().padStart(2,'0')}`;
-  }
+function getLMColor(idx) {
+  if (LM_COLORS.face.includes(idx))  return '#7c6bff';
+  if (LM_COLORS.upper.includes(idx)) return '#00ff88';
+  if (LM_COLORS.torso.includes(idx)) return '#00ccff';
+  return '#ff3c6e';
+}
 
-  function bumpReps() {
+// DOM refs
+const els = {
+  connDot:       document.getElementById('connDot'),
+  connText:      document.getElementById('connText'),
+  fpsDisplay:    document.getElementById('fpsDisplay'),
+  startOverlay:  document.getElementById('startOverlay'),
+  startBtn:      document.getElementById('startBtn'),
+  webcam:        document.getElementById('webcam'),
+  poseCanvas:    document.getElementById('poseCanvas'),
+  angleBadge:    document.getElementById('angleBadge'),
+  feedbackPill:  document.getElementById('feedbackPill'),
+  repDisplay:    document.getElementById('repDisplay'),
+  stageStart:    document.getElementById('stageStart'),
+  stageEnd:      document.getElementById('stageEnd'),
+  exerciseSelect:document.getElementById('exerciseSelect'),
+  statRPM:       document.getElementById('statRPM'),
+  statCadence:   document.getElementById('statCadence'),
+  statROM:       document.getElementById('statROM'),
+  statTime:      document.getElementById('statTime'),
+  romPct:        document.getElementById('romPct'),
+  romFill:       document.getElementById('romFill'),
+  repHistory:    document.getElementById('repHistory'),
+  summaryBtn:    document.getElementById('summaryBtn'),
+  resetBtn:      document.getElementById('resetBtn'),
+  modalBg:       document.getElementById('modalBg'),
+  closeModal:    document.getElementById('closeModal'),
+  newSession:    document.getElementById('newSession'),
+  mReps:         document.getElementById('mReps'),
+  mRPM:          document.getElementById('mRPM'),
+  mCadence:      document.getElementById('mCadence'),
+  mROM:          document.getElementById('mROM'),
+  mDuration:     document.getElementById('mDuration'),
+  mExercise:     document.getElementById('mExercise'),
+  toast:         document.getElementById('toast'),
+};
+
+const ctx = els.poseCanvas.getContext('2d');
+let socket = null;
+let captureLoop = null;
+let latest = null;
+let lastCount = 0;
+let fpsArr = [];
+let lastFrameTime = performance.now();
+let streaming = false;
+
+// ── Socket.IO ─────────────────────────────────────────────────────────────────
+function connectSocket() {
+  socket = io({ transports: ['websocket', 'polling'] });
+
+  socket.on('connect', () => {
+    els.connDot.className = 'conn-dot connected';
+    els.connText.textContent = 'Connected';
+  });
+
+  socket.on('disconnect', () => {
+    els.connDot.className = 'conn-dot error';
+    els.connText.textContent = 'Disconnected';
+  });
+
+  socket.on('connected', (data) => {
+    populateExercises(data.exercises || []);
+  });
+
+  socket.on('result', (data) => {
+    updateUI(data);
+    drawLandmarks(data.landmarks || []);
+  });
+
+  socket.on('reset_ok', () => clearSessionUI());
+
+  socket.on('error', (data) => showToast(data.message || 'Server error'));
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function showToast(msg, dur = 3000) {
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  setTimeout(() => els.toast.classList.remove('show'), dur);
+}
+
+function populateExercises(list) {
+  els.exerciseSelect.innerHTML = '';
+  list.forEach(name => {
+    const o = document.createElement('option');
+    o.value = o.textContent = name;
+    els.exerciseSelect.appendChild(o);
+  });
+}
+
+function updateUI(s) {
+  latest = s;
+
+  // Angle + FPS
+  els.angleBadge.textContent = Math.round(s.angle ?? 0);
+  const now = performance.now();
+  fpsArr.push(1000 / (now - lastFrameTime));
+  if (fpsArr.length > 12) fpsArr.shift();
+  lastFrameTime = now;
+  els.fpsDisplay.textContent = `${Math.round(fpsArr.reduce((a,b)=>a+b,0)/fpsArr.length)} FPS`;
+
+  // Feedback
+  els.feedbackPill.textContent = s.feedback || 'Get into position…';
+  els.feedbackPill.classList.toggle('warn', (s.feedback||'').toLowerCase().includes('too fast'));
+
+  // Rep count
+  const cnt = Number(s.count ?? 0);
+  els.repDisplay.textContent = cnt;
+  if (cnt > lastCount) {
     els.repDisplay.classList.add('bump');
     setTimeout(() => els.repDisplay.classList.remove('bump'), 150);
+    for (let i = 0; i < cnt - lastCount; i++) {
+      const d = document.createElement('div');
+      d.className = 'rep-dot';
+      els.repHistory.appendChild(d);
+    }
+    lastCount = cnt;
   }
 
-  function addRepDots(n) {
-    for (let i = 0; i < n; i++) {
-      const dot = document.createElement('div');
-      dot.className = 'rep-dot';
-      els.repHistory.appendChild(dot);
-    }
-  }
+  // Stage pills
+  els.stageStart.classList.toggle('active', s.stage === 'start');
+  els.stageEnd.classList.toggle('active', s.stage === 'end');
 
-  function updateUI(s) {
-    latest = s;
-    els.angleBadge.textContent = Math.round(s.angle ?? 0);
-    els.fpsDisplay.textContent = `${Math.round(s.fps ?? 0)} FPS`;
+  // Stats
+  els.statTime.textContent    = fmtTime(s.elapsed_sec ?? 0);
+  els.statRPM.textContent     = (s.rpm > 0) ? s.rpm.toFixed(1) : '--';
+  els.statCadence.textContent = (s.avg_cadence > 0) ? `${s.avg_cadence.toFixed(1)}s` : '--';
+  els.statROM.textContent     = (s.avg_rom > 0) ? `${Math.round(s.avg_rom)}°` : '--°';
 
-    els.feedbackPill.textContent = s.feedback || 'Get into position…';
-    els.feedbackPill.classList.toggle('warn', (s.feedback || '').toLowerCase().includes('too fast'));
+  const romPct = Math.min(Math.max(((s.angle ?? 0) / 180) * 100, 0), 100);
+  els.romFill.style.width = romPct + '%';
+  els.romPct.textContent  = Math.round(romPct) + '%';
+}
 
-    const cnt = Number(s.count ?? 0);
-    els.repDisplay.textContent = cnt;
-    if (cnt > lastCount) {
-      bumpReps();
-      addRepDots(cnt - lastCount);
-      lastCount = cnt;
-    }
+function clearSessionUI() {
+  latest = null; lastCount = 0; fpsArr = [];
+  els.repDisplay.textContent = '0';
+  els.angleBadge.textContent = '--';
+  els.feedbackPill.textContent = 'Get into position…';
+  els.repHistory.innerHTML = '';
+  els.statRPM.textContent = els.statCadence.textContent = '--';
+  els.statROM.textContent = '--°';
+  els.statTime.textContent = '0:00';
+  els.romFill.style.width = '0%';
+  els.romPct.textContent = '0%';
+  ctx.clearRect(0, 0, els.poseCanvas.width, els.poseCanvas.height);
+}
 
-    els.stageStart.classList.toggle('active', s.stage === 'start');
-    els.stageEnd.classList.toggle('active', s.stage === 'end');
+// ── Landmark drawing ──────────────────────────────────────────────────────────
+function drawLandmarks(landmarks) {
+  const cw = els.poseCanvas.width;
+  const ch = els.poseCanvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  if (!landmarks.length) return;
 
-    const elapsed = Number(s.elapsed_sec ?? 0);
-    els.statTime.textContent = fmtTime(elapsed);
-
-    const rpm = Number(s.rpm ?? 0);
-    els.statRPM.textContent = rpm > 0 ? rpm.toFixed(1) : '--';
-
-    const cad = Number(s.avg_cadence ?? 0);
-    els.statCadence.textContent = cad > 0 ? `${cad.toFixed(1)}s` : '--';
-
-    const rom = Number(s.avg_rom ?? 0);
-    els.statROM.textContent = rom > 0 ? `${Math.round(rom)}°` : '--°';
-
-    const romPct = Math.min(Math.max((Number(s.angle ?? 0) / 180) * 100, 0), 100);
-    els.romFill.style.width = romPct + '%';
-    els.romPct.textContent = Math.round(romPct) + '%';
-  }
-
-  function drawCadenceChart(repDurations) {
-    const canvas = document.getElementById('cadenceChart');
-    const ctx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = 60;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const data = Array.isArray(repDurations) ? repDurations : [];
-    if (!data.length) {
-      ctx.fillStyle = '#55556a';
-      ctx.font = '12px DM Mono';
-      ctx.fillText('No rep data yet', 10, 35);
-      return;
-    }
-
-    const max = Math.max(...data) + 0.5;
-    const bw = canvas.width / data.length - 4;
-    const avg = data.reduce((a,b)=>a+b,0) / data.length;
-
-    data.forEach((d, i) => {
-      const bh = (d / max) * 50;
-      const x = i * (bw + 4) + 2;
-      const y = 55 - bh;
-      ctx.fillStyle = d <= avg * 1.2 ? '#00ff88' : '#ff3c6e';
-      ctx.beginPath();
-      ctx.roundRect(x, y, bw, bh, 3);
-      ctx.fill();
-    });
-
-    const avgY = 55 - (avg / max) * 50;
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.setLineDash([4,4]);
+  // Draw connections
+  ctx.lineWidth = 2;
+  POSE_CONNECTIONS.forEach(([a, b]) => {
+    const la = landmarks[a], lb = landmarks[b];
+    if (!la || !lb) return;
+    if (la.v < 0.5 || lb.v < 0.5) return;
     ctx.beginPath();
-    ctx.moveTo(0, avgY);
-    ctx.lineTo(canvas.width, avgY);
+    ctx.strokeStyle = 'rgba(120,120,160,0.55)';
+    ctx.moveTo(la.x * cw, la.y * ch);
+    ctx.lineTo(lb.x * cw, lb.y * ch);
     ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  });
 
-  async function api(path, body) {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body || {}),
+  // Draw landmark dots
+  landmarks.forEach((lm, i) => {
+    if (lm.v < 0.5) return;
+    ctx.beginPath();
+    ctx.arc(lm.x * cw, lm.y * ch, 4, 0, Math.PI * 2);
+    ctx.fillStyle = getLMColor(i);
+    ctx.fill();
+  });
+}
+
+// ── Webcam capture + send ─────────────────────────────────────────────────────
+const capCanvas = document.createElement('canvas');
+const capCtx    = capCanvas.getContext('2d');
+
+function captureAndSend() {
+  if (!streaming || !socket?.connected) return;
+  const v = els.webcam;
+  if (v.videoWidth === 0) return;
+
+  capCanvas.width  = Math.min(v.videoWidth, 640);
+  capCanvas.height = Math.min(v.videoHeight, 360);
+
+  // Draw normally (not mirrored) — server handles pose on raw frame
+  capCtx.drawImage(v, 0, 0, capCanvas.width, capCanvas.height);
+  const b64 = capCanvas.toDataURL('image/jpeg', 0.65).split(',')[1];
+
+  socket.emit('frame', {
+    frame: b64,
+    exercise: els.exerciseSelect.value,
+  });
+}
+
+// ── Start webcam ──────────────────────────────────────────────────────────────
+async function startCamera() {
+  els.startBtn.disabled = true;
+  els.startBtn.textContent = 'Opening camera…';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false,
     });
-    if (!res.ok) throw new Error(await res.text());
-    return await res.json();
-  }
+    els.webcam.srcObject = stream;
+    els.webcam.style.display = 'block';
+    await new Promise(r => els.webcam.onloadedmetadata = r);
 
-  async function loadExercises() {
-    const res = await fetch('/api/config');
-    const cfg = await res.json();
-    els.exerciseSelect.innerHTML = '';
-    (cfg.exercises || []).forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      els.exerciseSelect.appendChild(opt);
-    });
-  }
+    // Size the pose canvas to match
+    const rect = els.webcam.getBoundingClientRect();
+    els.poseCanvas.width  = rect.width  || 640;
+    els.poseCanvas.height = rect.height || 480;
 
-  function connectEvents() {
-    if (events) events.close();
-    events = new EventSource('/api/session/events');
-    events.onmessage = (e) => {
-      try { updateUI(JSON.parse(e.data)); } catch (_) {}
-    };
-    events.onerror = () => {
-      // keep default auto-reconnect behavior
-    };
-  }
-
-  async function startSession() {
-    els.statusDot.classList.add('live');
-    els.statusText.textContent = 'Starting…';
+    streaming = true;
     els.startOverlay.classList.add('hidden');
 
-    const exercise = els.exerciseSelect.value;
-    await api('/api/session/start', { exercise });
+    // Send frames every 80ms (~12fps)
+    captureLoop = setInterval(captureAndSend, 80);
 
-    els.videoFeed.style.display = 'block';
-    els.videoFeed.src = '/api/video?ts=' + Date.now();
-    els.statusText.textContent = 'Live';
-
-    connectEvents();
+  } catch (err) {
+    els.startBtn.disabled = false;
+    els.startBtn.textContent = 'Start Camera';
+    showToast(`Camera error: ${err.message}`);
   }
+}
 
-  function clearSessionUI() {
-    latest = null;
-    lastCount = 0;
-    els.repDisplay.textContent = '0';
-    els.angleBadge.textContent = '--';
-    els.feedbackPill.textContent = 'Get into position…';
-    els.repHistory.innerHTML = '';
-    els.statRPM.textContent = '--';
-    els.statCadence.textContent = '--';
-    els.statROM.textContent = '--°';
-    els.statTime.textContent = '0:00';
-    els.romFill.style.width = '0%';
-    els.romPct.textContent = '0%';
+// Resize canvas when window resizes
+window.addEventListener('resize', () => {
+  const rect = els.webcam.getBoundingClientRect();
+  if (rect.width) {
+    els.poseCanvas.width  = rect.width;
+    els.poseCanvas.height = rect.height;
   }
+});
 
-  els.startBtn.addEventListener('click', () => startSession().catch(err => {
-    els.statusDot.classList.remove('live');
-    els.statusText.textContent = 'Error starting camera';
-    els.startOverlay.classList.remove('hidden');
-    alert(err.message || String(err));
-  }));
-
-  els.exerciseSelect.addEventListener('change', async (e) => {
-    try {
-      await api('/api/session/exercise', { exercise: e.target.value });
-      clearSessionUI();
-    } catch (_) {}
+// ── Summary modal ─────────────────────────────────────────────────────────────
+function drawCadenceChart(repDurations) {
+  const canvas = document.getElementById('cadenceChart');
+  const c = canvas.getContext('2d');
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = 60;
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  const data = Array.isArray(repDurations) ? repDurations : [];
+  if (!data.length) {
+    c.fillStyle = '#4a4a64'; c.font = '12px DM Mono';
+    c.fillText('No rep data yet', 10, 35); return;
+  }
+  const max  = Math.max(...data) + 0.5;
+  const bw   = canvas.width / data.length - 4;
+  const avg  = data.reduce((a,b) => a+b, 0) / data.length;
+  data.forEach((d, i) => {
+    const bh = (d / max) * 50;
+    const x  = i * (bw + 4) + 2;
+    c.fillStyle = d <= avg * 1.2 ? '#00ff88' : '#ff3c6e';
+    c.beginPath(); c.roundRect(x, 55 - bh, bw, bh, 3); c.fill();
   });
+  const avgY = 55 - (avg / max) * 50;
+  c.strokeStyle = 'rgba(255,255,255,0.25)'; c.setLineDash([4,4]);
+  c.beginPath(); c.moveTo(0, avgY); c.lineTo(canvas.width, avgY); c.stroke();
+  c.setLineDash([]);
+}
 
-  els.resetBtn.addEventListener('click', async () => {
-    await api('/api/session/reset');
+function showSummary() {
+  const s = latest || {};
+  els.mReps.textContent     = String(s.count ?? 0);
+  els.mRPM.textContent      = s.rpm > 0 ? s.rpm.toFixed(1) : '--';
+  els.mCadence.textContent  = s.avg_cadence > 0 ? `${s.avg_cadence.toFixed(2)}s` : '--';
+  els.mROM.textContent      = s.avg_rom > 0 ? `${Math.round(s.avg_rom)}°` : '--';
+  els.mDuration.textContent = fmtTime(s.elapsed_sec ?? 0);
+  els.mExercise.textContent = s.exercise || '--';
+  els.modalBg.classList.add('show');
+  setTimeout(() => drawCadenceChart(s.rep_durations || []), 60);
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+els.startBtn.addEventListener('click', startCamera);
+
+els.exerciseSelect.addEventListener('change', (e) => {
+  if (socket?.connected) {
+    socket.emit('set_exercise', { exercise: e.target.value });
     clearSessionUI();
-  });
+  }
+});
 
-  els.summaryBtn.addEventListener('click', () => {
-    const s = latest || {};
-    els.mReps.textContent = String(s.count ?? 0);
-    els.mRPM.textContent = (Number(s.rpm ?? 0) > 0) ? Number(s.rpm).toFixed(1) : '--';
-    els.mCadence.textContent = (Number(s.avg_cadence ?? 0) > 0) ? `${Number(s.avg_cadence).toFixed(2)}s` : '--';
-    els.mROM.textContent = (Number(s.avg_rom ?? 0) > 0) ? `${Math.round(Number(s.avg_rom))}°` : '--';
-    els.mDuration.textContent = fmtTime(Number(s.elapsed_sec ?? 0));
-    els.mExercise.textContent = s.exercise || '--';
-    els.modalBg.classList.add('show');
-    setTimeout(() => drawCadenceChart(s.rep_durations || []), 50);
-  });
+els.resetBtn.addEventListener('click', () => {
+  if (socket?.connected) socket.emit('reset');
+  else clearSessionUI();
+});
 
-  els.closeModal.addEventListener('click', () => els.modalBg.classList.remove('show'));
-  els.modalBg.addEventListener('click', e => {
-    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
-  });
-  els.newSession.addEventListener('click', async () => {
-    await api('/api/session/reset');
-    clearSessionUI();
-    els.modalBg.classList.remove('show');
-  });
+els.summaryBtn.addEventListener('click', showSummary);
+els.closeModal.addEventListener('click', () => els.modalBg.classList.remove('show'));
+els.modalBg.addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+});
+els.newSession.addEventListener('click', () => {
+  if (socket?.connected) socket.emit('reset');
+  else clearSessionUI();
+  els.modalBg.classList.remove('show');
+});
 
-  (async () => {
-    await loadExercises();
-    els.statusText.textContent = 'Ready';
-  })();
+// ── Boot ──────────────────────────────────────────────────────────────────────
+connectSocket();
 </script>
 </body>
 </html>
-
