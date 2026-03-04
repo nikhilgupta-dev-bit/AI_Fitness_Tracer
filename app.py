@@ -1,10 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
 
-"""
-VeloFit AI — Production Backend
-"""
-
 import base64
 import os
 import atexit
@@ -15,10 +11,10 @@ from flask_socketio import SocketIO, emit
 from pose_engine import FrameProcessor
 from rep_counter_lib import EXERCISES
 
-# ── App & Socket.IO setup ─────────────────────────────────────────────────────
+# ── VeloFit AI Setup ─────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
+app.secret_key = os.environ.get("SECRET_KEY", "prod-secret-key-123")
 
 socketio = SocketIO(
     app,
@@ -26,36 +22,28 @@ socketio = SocketIO(
     async_mode="eventlet",
     logger=False,
     engineio_logger=False,
-    max_http_buffer_size=5 * 1024 * 1024,  # 5 MB max frame size
+    max_http_buffer_size=5 * 1024 * 1024
 )
 
 processor = FrameProcessor(
     model_complexity=int(os.environ.get("MODEL_COMPLEXITY", "0"))
 )
 
-# ── HTTP routes ───────────────────────────────────────────────────────────────
-
 @app.get("/")
 def index():
     return render_template("index.html")
-
 
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True})
 
-
 @app.get("/api/config")
 def api_config():
     return jsonify({"exercises": list(EXERCISES.keys())})
 
-
-# ── Socket.IO events ──────────────────────────────────────────────────────────
-
 @socketio.on("connect")
 def on_connect():
     emit("connected", {"exercises": list(EXERCISES.keys())})
-
 
 @socketio.on("frame")
 def handle_frame(data):
@@ -67,20 +55,15 @@ def handle_frame(data):
     except Exception as exc:
         emit("error", {"message": str(exc)})
 
-
 @socketio.on("reset")
 def handle_reset():
     processor.reset()
     emit("reset_ok", {})
 
-
 @socketio.on("set_exercise")
 def handle_set_exercise(data):
     exercise = data.get("exercise", "")
     processor.set_exercise(exercise)
-
-
-# ── Cleanup ───────────────────────────────────────────────────────────────────
 
 @atexit.register
 def _shutdown():
@@ -88,9 +71,6 @@ def _shutdown():
         processor.close()
     except Exception:
         pass
-
-
-# ── Dev entry point ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     host = os.environ.get("HOST", "127.0.0.1")
