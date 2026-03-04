@@ -1,3 +1,7 @@
+# eventlet monkey patch MUST be the very first thing — before all other imports
+import eventlet
+eventlet.monkey_patch()
+
 """
 Flask + Socket.IO backend.
 
@@ -10,9 +14,6 @@ fully cloud-deployable.
 import base64
 import os
 import atexit
-
-import eventlet
-eventlet.monkey_patch()
 
 from flask import Flask, jsonify, render_template
 from flask_socketio import SocketIO, emit

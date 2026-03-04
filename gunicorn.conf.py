@@ -1,15 +1,20 @@
 import os
 
-bind = os.environ.get("REPTRACK_BIND", "127.0.0.1:8000")
+# Render (and other PaaS) inject PORT automatically.
+# Must bind to 0.0.0.0 so the platform can route external traffic.
+bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
 
-# OpenCV + camera capture is not multi-process friendly.
-workers = int(os.environ.get("REPTRACK_WORKERS", "1"))
-threads = int(os.environ.get("REPTRACK_THREADS", "1"))
+# Socket.IO requires eventlet (or gevent) worker.
+worker_class = "eventlet"
 
-timeout = int(os.environ.get("REPTRACK_TIMEOUT", "0"))  # 0 = disabled
-graceful_timeout = int(os.environ.get("REPTRACK_GRACEFUL_TIMEOUT", "30"))
+# Single worker — eventlet handles concurrency internally via green threads.
+workers = 1
+threads = 1
+
+timeout = 120
+graceful_timeout = 30
+keepalive = 5
 
 accesslog = "-"
-errorlog = "-"
-loglevel = os.environ.get("REPTRACK_LOGLEVEL", "info")
-
+errorlog  = "-"
+loglevel  = os.environ.get("LOG_LEVEL", "info")
