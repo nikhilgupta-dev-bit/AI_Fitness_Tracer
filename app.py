@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 """
 VeloFit AI — Production Backend
 """
@@ -5,12 +8,6 @@ VeloFit AI — Production Backend
 import base64
 import os
 import atexit
-import eventlet
-
-# Ensure monkey_patch is called in case it's run directly without gunicorn
-if __name__ == "__main__":
-    eventlet.monkey_patch()
-
 
 from flask import Flask, jsonify, render_template
 from flask_socketio import SocketIO, emit
