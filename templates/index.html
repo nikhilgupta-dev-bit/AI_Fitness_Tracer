@@ -1,27 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>RepTrack — AI Workout Counter</title>
-  <meta name="description" content="AI-powered rep counter using MediaPipe Pose. Track bicep curls, squats, push-ups and more in real-time from your browser."/>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeloFit — AI Workout Tracker</title>
+  <meta name="description"
+    content="AI-powered rep counter using MediaPipe Pose. Track bicep curls, squats, push-ups and more in real-time from your browser." />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
+    rel="stylesheet" />
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
   <style>
     :root {
-      --bg:      #08080f;
+      --bg: #08080f;
       --surface: #111118;
-      --border:  #1c1c2e;
-      --accent:  #00ff88;
+      --border: #1c1c2e;
+      --accent: #00ff88;
       --accent2: #ff3c6e;
       --accent3: #7c6bff;
-      --text:    #e8e8f0;
-      --muted:   #4a4a64;
-      --panel:   rgba(17,17,24,0.94);
+      --text: #e8e8f0;
+      --muted: #4a4a64;
+      --panel: rgba(17, 17, 24, 0.94);
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       background: var(--bg);
@@ -34,49 +44,105 @@
     /* Subtle animated grid */
     body::before {
       content: '';
-      position: fixed; inset: 0;
+      position: fixed;
+      inset: 0;
       background-image:
-        linear-gradient(rgba(0,255,136,.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,255,136,.025) 1px, transparent 1px);
+        linear-gradient(rgba(0, 255, 136, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 136, .025) 1px, transparent 1px);
       background-size: 44px 44px;
       pointer-events: none;
       z-index: 0;
       animation: gridDrift 20s linear infinite;
     }
-    @keyframes gridDrift { to { background-position: 44px 44px; } }
+
+    @keyframes gridDrift {
+      to {
+        background-position: 44px 44px;
+      }
+    }
 
     /* ── Header ── */
     header {
-      position: relative; z-index: 10;
-      display: flex; align-items: center; justify-content: space-between;
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       padding: 14px 28px;
       border-bottom: 1px solid var(--border);
       background: var(--panel);
       backdrop-filter: blur(14px);
     }
+
     .logo {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.9rem; letter-spacing: 4px;
+      font-size: 1.9rem;
+      letter-spacing: 4px;
       color: var(--accent);
-      text-shadow: 0 0 22px rgba(0,255,136,.45);
+      text-shadow: 0 0 22px rgba(0, 255, 136, .45);
     }
-    .logo span { color: var(--text); }
 
-    .header-right { display: flex; align-items: center; gap: 20px; }
-    .conn-indicator { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+    .logo span {
+      color: var(--text);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .conn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .8rem;
+      color: var(--muted);
+    }
+
     .conn-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--muted); transition: background .3s;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background .3s;
     }
-    .conn-dot.connected { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
-    .conn-dot.error     { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    #fpsDisplay { font-family: 'DM Mono', monospace; font-size: .75rem; color: var(--muted); min-width: 50px; text-align: right; }
+    .conn-dot.connected {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    .conn-dot.error {
+      background: var(--accent2);
+      box-shadow: 0 0 8px var(--accent2);
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .3
+      }
+    }
+
+    #fpsDisplay {
+      font-family: 'DM Mono', monospace;
+      font-size: .75rem;
+      color: var(--muted);
+      min-width: 50px;
+      text-align: right;
+    }
 
     /* ── Layout ── */
     .app {
-      position: relative; z-index: 1;
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-columns: 1fr 340px;
       height: calc(100vh - 57px);
@@ -91,8 +157,10 @@
 
     /* Mirror the video (selfie view) */
     #webcam {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
       transform: scaleX(-1);
       display: none;
@@ -100,75 +168,127 @@
 
     /* Canvas sits on top, also mirrored so landmarks align */
     #poseCanvas {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       transform: scaleX(-1);
       pointer-events: none;
     }
 
     /* Angle badge */
     .angle-badge {
-      position: absolute; top: 16px; left: 16px; z-index: 5;
-      background: rgba(0,0,0,.72);
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 5;
+      background: rgba(0, 0, 0, .72);
       border: 1px solid var(--border);
-      border-radius: 8px; padding: 8px 14px;
-      font-family: 'DM Mono', monospace; font-size: .8rem;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: .8rem;
       backdrop-filter: blur(6px);
     }
-    .angle-badge span { color: var(--accent); font-size: 1.4rem; }
+
+    .angle-badge span {
+      color: var(--accent);
+      font-size: 1.4rem;
+    }
 
     /* Feedback pill */
     .feedback-pill {
-      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.82);
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, .82);
       border: 1px solid var(--accent);
-      border-radius: 40px; padding: 10px 32px;
-      font-size: 1rem; font-weight: 500;
-      color: var(--accent); letter-spacing: 1px;
-      white-space: nowrap; text-align: center;
+      border-radius: 40px;
+      padding: 10px 32px;
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 1px;
+      white-space: nowrap;
+      text-align: center;
       transition: border-color .25s, color .25s;
       backdrop-filter: blur(6px);
-      z-index: 5; min-width: 220px;
+      z-index: 5;
+      min-width: 220px;
     }
-    .feedback-pill.warn { border-color: var(--accent2); color: var(--accent2); }
+
+    .feedback-pill.warn {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
 
     /* Start / permission overlay */
     .start-overlay {
-      position: absolute; inset: 0; z-index: 20;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      background: rgba(8,8,15,.9);
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8, 8, 15, .9);
       backdrop-filter: blur(8px);
       gap: 20px;
       transition: opacity .4s;
     }
-    .start-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .start-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
     .start-overlay h2 {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 2.6rem; letter-spacing: 5px;
+      font-size: 2.6rem;
+      letter-spacing: 5px;
       color: var(--accent);
-      text-shadow: 0 0 30px rgba(0,255,136,.5);
+      text-shadow: 0 0 30px rgba(0, 255, 136, .5);
     }
-    .start-overlay p { color: var(--muted); font-size: .9rem; text-align: center; max-width: 380px; line-height: 1.7; }
+
+    .start-overlay p {
+      color: var(--muted);
+      font-size: .9rem;
+      text-align: center;
+      max-width: 380px;
+      line-height: 1.7;
+    }
 
     .btn-start {
-      background: var(--accent); color: #000;
+      background: var(--accent);
+      color: #000;
       font-family: 'DM Sans', sans-serif;
-      font-weight: 700; font-size: 1rem;
-      border: none; border-radius: 10px;
-      padding: 14px 48px; cursor: pointer;
+      font-weight: 700;
+      font-size: 1rem;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 48px;
+      cursor: pointer;
       letter-spacing: 1px;
       transition: transform .15s, box-shadow .15s;
-      box-shadow: 0 0 24px rgba(0,255,136,.3);
+      box-shadow: 0 0 24px rgba(0, 255, 136, .3);
     }
-    .btn-start:hover { transform: scale(1.05); box-shadow: 0 0 36px rgba(0,255,136,.55); }
-    .btn-start:active { transform: scale(.98); }
+
+    .btn-start:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 36px rgba(0, 255, 136, .55);
+    }
+
+    .btn-start:active {
+      transform: scale(.98);
+    }
 
     /* ── Sidebar ── */
     .side {
       background: var(--surface);
       border-left: 1px solid var(--border);
-      display: flex; flex-direction: column;
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
     }
 
@@ -176,75 +296,123 @@
       padding: 18px 22px;
       border-bottom: 1px solid var(--border);
     }
+
     .side-label {
       font-family: 'DM Mono', monospace;
-      font-size: .6rem; letter-spacing: 3px;
-      color: var(--muted); text-transform: uppercase;
+      font-size: .6rem;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
       margin-bottom: 10px;
     }
 
     /* Rep counter */
     .rep-display {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 7rem; line-height: 1;
+      font-size: 7rem;
+      line-height: 1;
       color: var(--accent);
-      text-shadow: 0 0 30px rgba(0,255,136,.25);
+      text-shadow: 0 0 30px rgba(0, 255, 136, .25);
       text-align: center;
       transition: transform .1s;
     }
-    .rep-display.bump { transform: scale(1.14); }
 
-    .stage-bar { display: flex; gap: 8px; margin-top: 12px; }
+    .rep-display.bump {
+      transform: scale(1.14);
+    }
+
+    .stage-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
     .stage-pill {
-      flex: 1; padding: 7px;
-      border-radius: 6px; text-align: center;
+      flex: 1;
+      padding: 7px;
+      border-radius: 6px;
+      text-align: center;
       font-family: 'DM Mono', monospace;
-      font-size: .65rem; letter-spacing: 2px;
-      background: var(--border); color: var(--muted);
+      font-size: .65rem;
+      letter-spacing: 2px;
+      background: var(--border);
+      color: var(--muted);
       transition: background .25s, color .25s;
     }
-    .stage-pill.active { background: var(--accent); color: #000; }
+
+    .stage-pill.active {
+      background: var(--accent);
+      color: #000;
+    }
 
     /* Exercise select */
     select {
       width: 100%;
-      background: var(--bg); color: var(--text);
+      background: var(--bg);
+      color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 8px; padding: 10px 14px;
-      font-family: 'DM Sans', sans-serif; font-size: .88rem;
-      cursor: pointer; outline: none; appearance: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: .88rem;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a4a64' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 14px center;
       transition: border-color .2s;
     }
-    select:focus { border-color: var(--accent); }
+
+    select:focus {
+      border-color: var(--accent);
+    }
 
     /* Stats grid */
-    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
     .stat-card {
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px;
+      border-radius: 8px;
+      padding: 12px;
       transition: border-color .2s;
     }
-    .stat-card:hover { border-color: #2a2a42; }
+
+    .stat-card:hover {
+      border-color: #2a2a42;
+    }
+
     .stat-card .val {
       font-family: 'DM Mono', monospace;
-      font-size: 1.25rem; color: var(--text);
+      font-size: 1.25rem;
+      color: var(--text);
       margin-bottom: 3px;
     }
-    .stat-card .lbl { font-size: .63rem; color: var(--muted); letter-spacing: 1px; }
+
+    .stat-card .lbl {
+      font-size: .63rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
 
     /* ROM bar */
     .rom-track {
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 20px; height: 9px;
-      overflow: hidden; margin-top: 8px;
+      border-radius: 20px;
+      height: 9px;
+      overflow: hidden;
+      margin-top: 8px;
     }
+
     .rom-fill {
-      height: 100%; width: 0%;
+      height: 100%;
+      width: 0%;
       background: linear-gradient(90deg, var(--accent), #00ccff);
       border-radius: 20px;
       transition: width .2s;
@@ -252,182 +420,317 @@
 
     /* Rep history */
     .rep-history {
-      display: flex; gap: 5px; flex-wrap: wrap;
-      max-height: 72px; overflow: hidden;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      max-height: 72px;
+      overflow: hidden;
     }
+
     .rep-dot {
-      width: 10px; height: 10px; border-radius: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
       background: var(--accent);
-      opacity: 0; transform: scale(0);
+      opacity: 0;
+      transform: scale(0);
       animation: popIn .3s forwards;
     }
-    @keyframes popIn { to { opacity: 1; transform: scale(1); } }
+
+    @keyframes popIn {
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
 
     /* Buttons */
-    .btn-row { display: flex; gap: 10px; }
-    .btn {
-      flex: 1; padding: 11px;
-      border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--text);
-      font-family: 'DM Sans', sans-serif; font-size: .85rem;
-      cursor: pointer; transition: all .2s; letter-spacing: .5px;
+    .btn-row {
+      display: flex;
+      gap: 10px;
     }
-    .btn:hover { border-color: var(--accent); color: var(--accent); }
-    .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
-    .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    .btn {
+      flex: 1;
+      padding: 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: .85rem;
+      cursor: pointer;
+      transition: all .2s;
+      letter-spacing: .5px;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn.danger:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    .btn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
 
     /* Summary modal */
     .modal-bg {
-      position: fixed; inset: 0; z-index: 100;
-      background: rgba(0,0,0,.88); backdrop-filter: blur(10px);
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, .88);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
       transition: opacity .3s;
     }
-    .modal-bg.show { opacity: 1; pointer-events: all; }
+
+    .modal-bg.show {
+      opacity: 1;
+      pointer-events: all;
+    }
+
     .modal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 18px; padding: 36px;
-      width: 500px; max-width: 95vw;
+      border-radius: 18px;
+      padding: 36px;
+      width: 500px;
+      max-width: 95vw;
       transform: translateY(24px);
       transition: transform .3s;
     }
-    .modal-bg.show .modal { transform: translateY(0); }
+
+    .modal-bg.show .modal {
+      transform: translateY(0);
+    }
+
     .modal h2 {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 2rem; letter-spacing: 3px;
-      color: var(--accent); margin-bottom: 24px;
+      font-size: 2rem;
+      letter-spacing: 3px;
+      color: var(--accent);
+      margin-bottom: 24px;
     }
-    .modal-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-    .modal-stat { background: var(--bg); border-radius: 10px; padding: 14px; }
-    .modal-stat .v { font-family: 'DM Mono', monospace; font-size: 1.5rem; color: var(--text); }
-    .modal-stat .l { font-size: .68rem; color: var(--muted); margin-top: 2px; letter-spacing: 1px; }
-    #cadenceChart { width: 100%; height: 60px; }
 
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .modal-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .modal-stat {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .modal-stat .v {
+      font-family: 'DM Mono', monospace;
+      font-size: 1.5rem;
+      color: var(--text);
+    }
+
+    .modal-stat .l {
+      font-size: .68rem;
+      color: var(--muted);
+      margin-top: 2px;
+      letter-spacing: 1px;
+    }
+
+    #cadenceChart {
+      width: 100%;
+      height: 60px;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
 
     /* Error toast */
     .toast {
-      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-      background: var(--surface); border: 1px solid var(--accent2);
-      border-radius: 10px; padding: 14px 28px;
-      color: var(--accent2); font-size: .9rem;
-      z-index: 999; pointer-events: none;
-      opacity: 0; transition: opacity .3s;
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--accent2);
+      border-radius: 10px;
+      padding: 14px 28px;
+      color: var(--accent2);
+      font-size: .9rem;
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
     }
-    .toast.show { opacity: 1; }
+
+    .toast.show {
+      opacity: 1;
+    }
   </style>
 </head>
+
 <body>
 
-<header>
-  <div class="logo">Rep<span>Track</span></div>
-  <div class="header-right">
-    <div class="conn-indicator">
-      <div class="conn-dot" id="connDot"></div>
-      <span id="connText">Connecting…</span>
+  <header>
+    <div class="logo">Velo<span>Fit</span></div>
+    <div class="header-right">
+      <div class="conn-indicator">
+        <div class="conn-dot" id="connDot"></div>
+        <span id="connText">Connecting…</span>
+      </div>
+      <div id="fpsDisplay">-- FPS</div>
     </div>
-    <div id="fpsDisplay">-- FPS</div>
-  </div>
-</header>
+  </header>
 
-<div class="app">
+  <div class="app">
 
-  <!-- ── Camera pane ── -->
-  <div class="camera-wrap">
-    <video id="webcam" autoplay muted playsinline></video>
-    <canvas id="poseCanvas"></canvas>
+    <!-- ── Camera pane ── -->
+    <div class="camera-wrap">
+      <video id="webcam" autoplay muted playsinline></video>
+      <canvas id="poseCanvas"></canvas>
 
-    <!-- Overlays -->
-    <div class="angle-badge">
-      ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
-    </div>
-    <div class="feedback-pill" id="feedbackPill">Get into position…</div>
+      <!-- Overlays -->
+      <div class="angle-badge">
+        ANGLE&nbsp;&nbsp;<span id="angleBadge">--</span>°
+      </div>
+      <div class="feedback-pill" id="feedbackPill">Get into position…</div>
 
-    <!-- Start overlay -->
-    <div class="start-overlay" id="startOverlay">
-      <h2>AI Rep Counter</h2>
-      <p>Your webcam stays in the browser — only pose data is sent to the server. Click Start and allow camera access.</p>
-      <button class="btn-start" id="startBtn">Start Camera</button>
-      <p style="font-size:.78rem;color:var(--muted)">Works on any device with a camera &nbsp;·&nbsp; MediaPipe runs on the server</p>
-    </div>
-  </div>
-
-  <!-- ── Sidebar ── -->
-  <div class="side">
-    <div class="side-section">
-      <div class="side-label">Reps</div>
-      <div class="rep-display" id="repDisplay">0</div>
-      <div class="stage-bar">
-        <div class="stage-pill" id="stageStart">START</div>
-        <div class="stage-pill" id="stageEnd">END</div>
+      <!-- Start overlay -->
+      <div class="start-overlay" id="startOverlay">
+        <h2>AI Rep Counter</h2>
+        <p>Your webcam stays in the browser — only pose data is sent to the server. Click Start and allow camera access.
+        </p>
+        <button class="btn-start" id="startBtn">Start Camera</button>
+        <p style="font-size:.78rem;color:var(--muted)">Works on any device with a camera &nbsp;·&nbsp; MediaPipe runs on
+          the server</p>
       </div>
     </div>
 
-    <div class="side-section">
-      <div class="side-label">Exercise</div>
-      <select id="exerciseSelect"></select>
-    </div>
-
-    <div class="side-section">
-      <div class="side-label">Live Stats</div>
-      <div class="stats-grid">
-        <div class="stat-card"><div class="val" id="statRPM">--</div><div class="lbl">REPS/MIN</div></div>
-        <div class="stat-card"><div class="val" id="statCadence">--</div><div class="lbl">SEC/REP</div></div>
-        <div class="stat-card"><div class="val" id="statROM">--°</div><div class="lbl">AVG ROM</div></div>
-        <div class="stat-card"><div class="val" id="statTime">0:00</div><div class="lbl">DURATION</div></div>
-      </div>
-      <div style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-bottom:4px">
-          <span>Range of Motion</span><span id="romPct">0%</span>
+    <!-- ── Sidebar ── -->
+    <div class="side">
+      <div class="side-section">
+        <div class="side-label">Reps</div>
+        <div class="rep-display" id="repDisplay">0</div>
+        <div class="stage-bar">
+          <div class="stage-pill" id="stageStart">START</div>
+          <div class="stage-pill" id="stageEnd">END</div>
         </div>
-        <div class="rom-track"><div class="rom-fill" id="romFill"></div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-label">Exercise</div>
+        <select id="exerciseSelect"></select>
+      </div>
+
+      <div class="side-section">
+        <div class="side-label">Live Stats</div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="val" id="statRPM">--</div>
+            <div class="lbl">REPS/MIN</div>
+          </div>
+          <div class="stat-card">
+            <div class="val" id="statCadence">--</div>
+            <div class="lbl">SEC/REP</div>
+          </div>
+          <div class="stat-card">
+            <div class="val" id="statROM">--°</div>
+            <div class="lbl">AVG ROM</div>
+          </div>
+          <div class="stat-card">
+            <div class="val" id="statTime">0:00</div>
+            <div class="lbl">DURATION</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-bottom:4px">
+            <span>Range of Motion</span><span id="romPct">0%</span>
+          </div>
+          <div class="rom-track">
+            <div class="rom-fill" id="romFill"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-section" style="flex:1">
+        <div class="side-label">Rep History</div>
+        <div class="rep-history" id="repHistory"></div>
+      </div>
+
+      <div class="side-section">
+        <div class="btn-row">
+          <button class="btn" id="summaryBtn">Summary</button>
+          <button class="btn danger" id="resetBtn">Reset</button>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="side-section" style="flex:1">
-      <div class="side-label">Rep History</div>
-      <div class="rep-history" id="repHistory"></div>
-    </div>
-
-    <div class="side-section">
+  <!-- Summary modal -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h2>Workout Summary</h2>
+      <div class="modal-stats">
+        <div class="modal-stat">
+          <div class="v" id="mReps">0</div>
+          <div class="l">TOTAL REPS</div>
+        </div>
+        <div class="modal-stat">
+          <div class="v" id="mRPM">--</div>
+          <div class="l">REPS / MIN</div>
+        </div>
+        <div class="modal-stat">
+          <div class="v" id="mCadence">--</div>
+          <div class="l">AVG CADENCE</div>
+        </div>
+        <div class="modal-stat">
+          <div class="v" id="mROM">--</div>
+          <div class="l">AVG ROM</div>
+        </div>
+        <div class="modal-stat">
+          <div class="v" id="mDuration">0:00</div>
+          <div class="l">DURATION</div>
+        </div>
+        <div class="modal-stat">
+          <div class="v" id="mExercise" style="font-size:1rem">--</div>
+          <div class="l">EXERCISE</div>
+        </div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="font-size:.68rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
+        <canvas id="cadenceChart"></canvas>
+      </div>
       <div class="btn-row">
-        <button class="btn" id="summaryBtn">Summary</button>
-        <button class="btn danger" id="resetBtn">Reset</button>
+        <button class="btn" id="closeModal">Close</button>
+        <button class="btn danger" id="newSession">New Session</button>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Summary modal -->
-<div class="modal-bg" id="modalBg">
-  <div class="modal">
-    <h2>Workout Summary</h2>
-    <div class="modal-stats">
-      <div class="modal-stat"><div class="v" id="mReps">0</div><div class="l">TOTAL REPS</div></div>
-      <div class="modal-stat"><div class="v" id="mRPM">--</div><div class="l">REPS / MIN</div></div>
-      <div class="modal-stat"><div class="v" id="mCadence">--</div><div class="l">AVG CADENCE</div></div>
-      <div class="modal-stat"><div class="v" id="mROM">--</div><div class="l">AVG ROM</div></div>
-      <div class="modal-stat"><div class="v" id="mDuration">0:00</div><div class="l">DURATION</div></div>
-      <div class="modal-stat"><div class="v" id="mExercise" style="font-size:1rem">--</div><div class="l">EXERCISE</div></div>
-    </div>
-    <div style="margin-bottom:20px">
-      <div style="font-size:.68rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">REP PACE CHART</div>
-      <canvas id="cadenceChart"></canvas>
-    </div>
-    <div class="btn-row">
-      <button class="btn" id="closeModal">Close</button>
-      <button class="btn danger" id="newSession">New Session</button>
-    </div>
-  </div>
-</div>
+  <div class="toast" id="toast"></div>
 
-<div class="toast" id="toast"></div>
-
-<script>
+  <script>
 // ── MediaPipe Pose connections (33 landmarks) ─────────────────────────────────
 const POSE_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,7],[0,4],[4,5],[5,6],[6,8],
@@ -764,6 +1067,7 @@ els.newSession.addEventListener('click', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 connectSocket();
-</script>
+  </script>
 </body>
+
 </html>

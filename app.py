@@ -1,19 +1,16 @@
-# eventlet monkey patch MUST be the very first thing — before all other imports
-import eventlet
-eventlet.monkey_patch()
-
 """
-Flask + Socket.IO backend.
-
-The browser captures its own webcam, encodes frames as base64 JPEG, and sends
-them over a Socket.IO WebSocket. The server runs MediaPipe Pose and streams
-back rep-counter state + landmark positions. No server-side camera required —
-fully cloud-deployable.
+VeloFit AI — Production Backend
 """
 
 import base64
 import os
 import atexit
+import eventlet
+
+# Ensure monkey_patch is called in case it's run directly without gunicorn
+if __name__ == "__main__":
+    eventlet.monkey_patch()
+
 
 from flask import Flask, jsonify, render_template
 from flask_socketio import SocketIO, emit
