@@ -9,7 +9,9 @@ gunicorn==23.0.0
 eventlet==0.39.1
 
 # Computer vision + pose estimation
-# Let pip resolve sub-dependencies (absl-py, protobuf, flatbuffers etc.)
+# Pinned version of mediapipe for stability
 mediapipe==0.10.32
-opencv-python-headless
-numpy
+
+# Force headless opencv to avoid libxcb.so.1 errors on Linux servers
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
