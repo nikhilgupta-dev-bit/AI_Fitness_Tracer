@@ -1,17 +1,15 @@
-# Web framework
-Flask==3.1.3
-flask-socketio==5.5.1
-python-socketio==5.12.1
-python-engineio==4.11.2
+# Fixed versions to resolve 'RequestContext' session attribute error
+Flask==3.0.3
+Werkzeug==3.0.3
+flask-socketio==5.3.6
+python-socketio==5.11.0
+python-engineio==4.9.0
 
-# WSGI + async worker (required for Socket.IO WebSocket transport)
+# WSGI + async worker
 gunicorn==23.0.0
-eventlet==0.39.1
+eventlet==0.39.0
 
-# Computer vision + pose estimation
-# Pinned version of mediapipe for stability
+# Computer vision
 mediapipe==0.10.32
-
-# Force headless opencv to avoid libxcb.so.1 errors on Linux servers
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
